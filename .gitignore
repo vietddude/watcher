@@ -1,2 +1,24 @@
+# Binaries
+bin/
+watcher
+watcher-debug
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencies
+vendor/
+
+# Local Config
+config.local.yaml
 .env
-/watcher
+
+# Logs
+*.log
