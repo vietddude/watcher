@@ -2,8 +2,14 @@ package storage
 
 import (
 	"context"
+	"errors"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+)
+
+var (
+	// ErrCursorNotFound is returned when a cursor doesn't exist
+	ErrCursorNotFound = errors.New("cursor not found")
 )
 
 // BlockRepository handles block storage operations

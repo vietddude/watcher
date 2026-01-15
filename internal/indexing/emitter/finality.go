@@ -63,13 +63,6 @@ func (f *FinalityBuffer) OnNewBlock(ctx context.Context, currentBlock uint64) er
 		}
 	}
 
-	// Sort isn't strictly necessary if strict ordering isn't required between blocks in a batch,
-	// but generally good to emit in order. Map iteration is random.
-	// For simplicity and speed in this map iteration, we'll just process them.
-	// If strict ordering is required, we should collect and sort keys.
-	// Let's assume block-level ordering is desired but strict total ordering across blocks isn't vital
-	// for the batch emit unless specified. However, for consistency, let's just emit them.
-
 	for _, blockNum := range blocksToEmit {
 		events := f.pending[blockNum]
 		if len(events) > 0 {
@@ -84,8 +77,6 @@ func (f *FinalityBuffer) OnNewBlock(ctx context.Context, currentBlock uint64) er
 }
 
 // DiscardBlock removes pending events for a specific block.
-// This logic is used when a reorg is detected: simply delete the pending events
-// for the orphaned blocks so they are never emitted.
 func (f *FinalityBuffer) DiscardBlock(blockNum uint64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -97,4 +88,33 @@ func (f *FinalityBuffer) PendingCount(blockNum uint64) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.pending[blockNum])
+}
+
+// Emit delegates to inner emitter (used for direct emission if needed, though Pipeline uses QueueEvent/OnNewBlock for finality)
+// IMPORTANT: Pipeline calls Emitter.Emit(). If FinalityBuffer is passed as Emitter to Pipeline,
+// this Emit method MUST implement the buffering logic, because Pipeline sees it as standard Emitter.
+// The Pipeline calls Emit(event).
+// The `QueueEvent` method I added previously is specific to FinalityBuffer, but Pipeline uses generic Emitter interface.
+// Adapter: func (f *FinalityBuffer) Emit(ctx, event) error { return f.QueueEvent(ctx, event) }
+
+func (f *FinalityBuffer) Emit(ctx context.Context, event *domain.Event) error {
+	return f.QueueEvent(ctx, event)
+}
+
+func (f *FinalityBuffer) EmitBatch(ctx context.Context, events []*domain.Event) error {
+	for _, e := range events {
+		if err := f.QueueEvent(ctx, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FinalityBuffer) EmitRevert(ctx context.Context, event *domain.Event, reason string) error {
+	return f.inner.EmitRevert(ctx, event, reason)
+}
+
+// Close closes the underlying emitter.
+func (f *FinalityBuffer) Close() error {
+	return f.inner.Close()
 }
