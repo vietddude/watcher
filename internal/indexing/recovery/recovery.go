@@ -1,40 +1,26 @@
+// Package recovery handles error recovery and retry strategies.
+//
+// # Design: Resilience
+//
+// Transient failures (network/RPC) are retried with exponential backoff.
+// Permanent failures (invalid data) are marked for manual review.
+//
+// # Failure Categories
+//
+//   - Transient: RPC timeout, rate limits (Retry)
+//   - Parsing: Invalid JSON/data format (Mark Failed)
+//   - Data: Logic error, missing deps (Mark Failed)
+//   - Critical: DB down, OOM (Stop System)
 package recovery
 
-import (
-	"context"
+// FailureCategory classifies validation errors.
+type FailureCategory string
 
-	"github.com/vietddude/watcher/internal/core/domain"
+const (
+	CategoryTransient FailureCategory = "transient"
+	CategoryPermanent FailureCategory = "permanent"
+	CategoryCritical  FailureCategory = "critical"
 )
 
-// MissingBlockDetector detects and handles missing blocks
-type MissingBlockDetector interface {
-	// DetectGaps detects missing blocks in a range
-	DetectGaps(ctx context.Context, fromBlock, toBlock uint64) error
-
-	// ProcessNext processes the next missing block in queue
-	ProcessNext(ctx context.Context) error
-
-	// BackfillRange backfills a specific range
-	BackfillRange(ctx context.Context, fromBlock, toBlock uint64) error
-}
-
-// ReorgDetector detects and handles blockchain reorganizations
-type ReorgDetector interface {
-	// CheckForReorg checks if a reorg has occurred
-	CheckForReorg(ctx context.Context, block *domain.Block) (bool, uint64, error)
-
-	// HandleReorg handles a detected reorganization
-	HandleReorg(ctx context.Context, reorgDepth uint64, safeBlock uint64) error
-
-	// VerifyFinality verifies blocks in the finality window
-	VerifyFinality(ctx context.Context, currentBlock uint64) error
-}
-
-// FailedBlockHandler handles failed block retries
-type FailedBlockHandler interface {
-	// ProcessNext retries the next failed block
-	ProcessNext(ctx context.Context) error
-
-	// Retry retries a specific failed block
-	Retry(ctx context.Context, blockNumber uint64) error
-}
+// Classifier determines the category of an error.
+type Classifier func(err error) FailureCategory
