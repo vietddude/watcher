@@ -9,7 +9,7 @@
 //
 // # Quick Start
 //
-//	import "github.com/vietddude/watcher/internal/rpc"
+//	import "github.com/vietddude/watcher/internal/infra/rpc"
 //
 //	// Setup
 //	budget := rpc.NewBudgetTracker(100000, map[string]float64{"ethereum": 1.0})
@@ -47,9 +47,9 @@ package rpc
 import (
 	"time"
 
-	"github.com/vietddude/watcher/internal/rpc/budget"
-	"github.com/vietddude/watcher/internal/rpc/provider"
-	"github.com/vietddude/watcher/internal/rpc/routing"
+	"github.com/vietddude/watcher/internal/infra/rpc/budget"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/rpc/routing"
 )
 
 // =============================================================================

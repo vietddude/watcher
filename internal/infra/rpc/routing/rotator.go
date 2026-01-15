@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/vietddude/watcher/internal/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
 // RotationStrategy defines how providers are rotated.

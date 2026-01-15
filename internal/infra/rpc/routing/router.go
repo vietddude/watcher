@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vietddude/watcher/internal/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
 // Router handles provider selection and health tracking.

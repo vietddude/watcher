@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vietddude/watcher/internal/rpc/provider"
-	"github.com/vietddude/watcher/internal/rpc/routing"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/rpc/routing"
 )
 
 // Coordinator unifies Budget and Router for coordinated provider decisions.

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vietddude/watcher/internal/rpc/budget"
-	"github.com/vietddude/watcher/internal/rpc/provider"
-	"github.com/vietddude/watcher/internal/rpc/routing"
+	"github.com/vietddude/watcher/internal/infra/rpc/budget"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/rpc/routing"
 )
 
 // Client is the high-level interface for making RPC calls.

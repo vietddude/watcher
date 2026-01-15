@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/vietddude/watcher/internal/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
 // RetryConfig defines retry behavior.
