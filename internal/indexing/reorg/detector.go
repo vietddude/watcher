@@ -9,6 +9,7 @@ import (
 
 // Detector checks for chain reorganizations using parent hash verification.
 type Detector struct {
+	config    Config
 	blockRepo storage.BlockRepository
 }
 
@@ -99,8 +100,12 @@ func (d *Detector) findSafePoint(ctx context.Context, chainID string, fromBlock 
 		depth++
 
 		// Safety limit to prevent infinite loops
-		if depth > 100 {
-			return 0, "", 0, fmt.Errorf("reorg depth exceeds 100 blocks")
+		maxDepth := d.config.MaxDepth
+		if maxDepth == 0 {
+			maxDepth = 100 // Default
+		}
+		if depth > maxDepth {
+			return 0, "", 0, fmt.Errorf("reorg depth exceeds %d blocks", maxDepth)
 		}
 	}
 

@@ -27,6 +27,10 @@ type Adapter interface {
 	// VerifyBlockHash verifies if a block hash matches the one on chain
 	VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error)
 
+	// EnrichTransaction fetches additional details (receipt) for a transaction
+	// Only call this for transactions you care about (matched by filter)
+	EnrichTransaction(ctx context.Context, tx *domain.Transaction) error
+
 	// GetFinalityDepth returns the number of confirmations for finality
 	GetFinalityDepth() uint64
 

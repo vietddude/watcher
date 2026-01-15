@@ -172,10 +172,34 @@ func (a *EVMAdapter) SupportsBloomFilter() bool {
 	return true
 }
 
+// EnrichTransaction fetches receipt for a transaction to get actual gas used and status.
+// Only call this for transactions that match your filter.
+func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
+	receipt, err := a.getTransactionReceipt(ctx, tx.TxHash)
+	if err != nil {
+		return fmt.Errorf("failed to get receipt: %w", err)
+	}
+	if receipt == nil {
+		return nil
+	}
+
+	if gu, ok := receipt["gasUsed"].(string); ok {
+		tx.GasUsed, _ = parseHexString(gu)
+	}
+	if st, ok := receipt["status"].(string); ok && st == "0x0" {
+		tx.Status = domain.TxStatusFailed
+	}
+	return nil
+}
+
 // Helper methods
 
 func (a *EVMAdapter) parseBlock(blockData map[string]interface{}) (*domain.Block, error) {
-	number, err := parseHexUint64(blockData["number"].(map[string]any))
+	numberStr, ok := blockData["number"].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid block number format")
+	}
+	number, err := parseHexString(numberStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid block number: %w", err)
 	}
@@ -190,7 +214,11 @@ func (a *EVMAdapter) parseBlock(blockData map[string]interface{}) (*domain.Block
 		return nil, fmt.Errorf("invalid parent hash")
 	}
 
-	timestamp, err := parseHexUint64(blockData["timestamp"].(map[string]any))
+	timestampStr, ok := blockData["timestamp"].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid timestamp format")
+	}
+	timestamp, err := parseHexString(timestampStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid timestamp: %w", err)
 	}
@@ -239,7 +267,7 @@ func (a *EVMAdapter) parseTransaction(txData map[string]interface{}, block *doma
 
 	txIndex := 0
 	if idx, ok := txData["transactionIndex"].(string); ok {
-		idxInt, _ := parseHexUint64(map[string]any{"val": idx})
+		idxInt, _ := parseHexString(idx)
 		txIndex = int(idxInt)
 	}
 
@@ -248,18 +276,10 @@ func (a *EVMAdapter) parseTransaction(txData map[string]interface{}, block *doma
 		gasPrice = gp
 	}
 
-	// Get transaction receipt for gas used and status
-	receipt, err := a.getTransactionReceipt(context.Background(), txHash)
-	gasUsed := uint64(0)
-	status := domain.TxStatusSuccess
-
-	if err == nil && receipt != nil {
-		if gu, ok := receipt["gasUsed"].(string); ok {
-			gasUsed, _ = parseHexUint64(map[string]any{"val": gu})
-		}
-		if st, ok := receipt["status"].(string); ok && st == "0x0" {
-			status = domain.TxStatusFailed
-		}
+	// Gas estimate from transaction (not actual usage - that requires receipt)
+	gas := uint64(0)
+	if g, ok := txData["gas"].(string); ok {
+		gas, _ = parseHexString(g)
 	}
 
 	rawData, _ := json.Marshal(txData)
@@ -273,9 +293,9 @@ func (a *EVMAdapter) parseTransaction(txData map[string]interface{}, block *doma
 		From:        strings.ToLower(from),
 		To:          strings.ToLower(to),
 		Value:       value,
-		GasUsed:     gasUsed,
+		GasUsed:     gas, // Using gas limit as estimate; fetch receipt later if needed
 		GasPrice:    gasPrice,
-		Status:      status,
+		Status:      domain.TxStatusSuccess, // Assume success; fetch receipt for failed check
 		Timestamp:   block.Timestamp,
 		RawData:     rawData,
 	}, nil
@@ -309,21 +329,11 @@ func (a *EVMAdapter) containsAddress(addresses []string, target string) bool {
 	return false
 }
 
-func parseHexUint64(data map[string]any) (uint64, error) {
-	var hexStr string
-
-	// Try different keys
-	if val, ok := data["number"].(string); ok {
-		hexStr = val
-	} else if val, ok := data["timestamp"].(string); ok {
-		hexStr = val
-	} else if val, ok := data["val"].(string); ok {
-		hexStr = val
-	} else {
-		return 0, fmt.Errorf("no valid hex value found")
-	}
-
+func parseHexString(hexStr string) (uint64, error) {
 	num := new(big.Int)
-	num.SetString(strings.TrimPrefix(hexStr, "0x"), 16)
+	_, ok := num.SetString(strings.TrimPrefix(hexStr, "0x"), 16)
+	if !ok {
+		return 0, fmt.Errorf("invalid hex: %s", hexStr)
+	}
 	return num.Uint64(), nil
 }

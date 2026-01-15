@@ -21,8 +21,6 @@ func main() {
 	// Setup logging
 	logger := stylelog.InitDefault()
 
-	logger.Info("Starting Watcher...", "config", *configPath)
-
 	// Load Configuration
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -32,16 +30,23 @@ func main() {
 
 	// Transform config
 	controlCfg := control.Config{
-		ServerPort: cfg.Server.Port,
-		Chains:     make([]control.ChainConfig, len(cfg.Chains)),
+		Port:   cfg.Server.Port,
+		Chains: make([]control.ChainConfig, len(cfg.Chains)),
 	}
 
 	for i, c := range cfg.Chains {
+		providers := make([]control.ProviderConfig, len(c.Providers))
+		for j, p := range c.Providers {
+			providers[j] = control.ProviderConfig{
+				Name: p.Name,
+				URL:  p.URL,
+			}
+		}
 		controlCfg.Chains[i] = control.ChainConfig{
 			ChainID:        c.ID,
-			RPCURL:         c.RPCURL,
 			FinalityBlocks: c.FinalityBlocks,
 			ScanInterval:   c.ScanInterval,
+			Providers:      providers,
 		}
 	}
 

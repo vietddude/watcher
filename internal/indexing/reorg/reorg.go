@@ -34,9 +34,15 @@ import (
 // HashFetcher fetches block hash from RPC (used when finding safe point).
 type HashFetcher func(chainID string, blockNum uint64) (hash string, err error)
 
+// Config holds configuration for reorg detection.
+type Config struct {
+	MaxDepth int // Maximum depth to search for a safe point (default: 100)
+}
+
 // NewDetector creates a new reorg detector.
-func NewDetector(blockRepo storage.BlockRepository) *Detector {
+func NewDetector(config Config, blockRepo storage.BlockRepository) *Detector {
 	return &Detector{
+		config:    config,
 		blockRepo: blockRepo,
 	}
 }

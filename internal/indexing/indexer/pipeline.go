@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -34,18 +35,20 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	ticker := time.NewTicker(p.cfg.ScanInterval)
 	defer ticker.Stop()
 
+	// Process immediately on startup, then use ticker
 	for {
+		if err := p.processNextBlock(ctx); err != nil {
+			slog.Error("Block processing error", "error", err)
+			time.Sleep(time.Second)
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-p.stop:
 			return nil
 		case <-ticker.C:
-			if err := p.processNextBlock(ctx); err != nil {
-				// Log error (in real app)
-				// Wait a bit before retrying loop to avoid tight loop on failure
-				time.Sleep(time.Second)
-			}
+			// Continue to next iteration
 		}
 	}
 }
@@ -73,7 +76,22 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	// 1. Get current position
 	cursor, err := p.cfg.Cursor.Get(ctx, p.cfg.ChainID)
 	if err != nil {
-		return fmt.Errorf("failed to get cursor: %w", err)
+		// Cursor not found - initialize at block 0 (or latest - finality in production)
+		slog.Info("Cursor not found, initializing...")
+		latestBlock, latestErr := p.cfg.ChainAdapter.GetLatestBlock(ctx)
+		if latestErr != nil {
+			return fmt.Errorf("failed to get latest block for initialization: %w", latestErr)
+		}
+		// Start from latest block minus some buffer to avoid missing recent blocks
+		startBlock := latestBlock
+		if startBlock > 10 {
+			startBlock = latestBlock - 10
+		}
+		cursor, err = p.cfg.Cursor.Initialize(ctx, p.cfg.ChainID, startBlock)
+		if err != nil {
+			return fmt.Errorf("failed to initialize cursor: %w", err)
+		}
+		slog.Info("Cursor initialized", "startBlock", startBlock)
 	}
 
 	targetBlockNum := cursor.CurrentBlock + 1
@@ -111,18 +129,10 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		return p.handleError(ctx, targetBlockNum, fmt.Errorf("fetch txs failed: %w", err))
 	}
 
-	// 5. Filter Transactions
-	// Adapter usually provides optimization for filtering
-	// We need the list of addresses from filter first?
-	// chain.Adapter.FilterTransactions takes []string addresses.
-	// But filter.Filter stores them.
-	// To use Adapter's optimized filtering, we need to extract addresses from Filter or let Adapter handle it.
-	// Current Filter interface: Contains(), Add(), Size(). No "GetAddresses()".
-	// Assuming linear scan using Filter.Contains for now if Adapter doesn't support generic Filter.
-	// But wait, Adapter.FilterTransactions takes []string.
-	// Ideally Filter interface should expose `GetInterestedAddresses()` or similar.
-	// For simplicity in this iteration: We'll iterate manually using `Filter.Contains`.
+	// Log block processing
+	slog.Info("Processing block", "block", targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
 
+	// 5. Filter Transactions using bloom filter
 	var relevantTxs []*domain.Transaction
 	for _, tx := range txs {
 		if p.cfg.Filter.Contains(tx.From) || p.cfg.Filter.Contains(tx.To) {
@@ -130,11 +140,23 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		}
 	}
 
+	// 6. Enrich matched transactions with receipt data (gas used, status)
+	for _, tx := range relevantTxs {
+		if err := p.cfg.ChainAdapter.EnrichTransaction(ctx, tx); err != nil {
+			slog.Warn("Failed to enrich transaction", "tx", tx.TxHash, "error", err)
+		}
+	}
+
+	// Log if we found relevant transactions
+	if len(relevantTxs) > 0 {
+		slog.Info("Found relevant transactions", "block", block.Number, "matched", len(relevantTxs), "total", len(txs))
+	}
+
 	// Convert to Events
 	var events []*domain.Event
 	for _, tx := range relevantTxs {
 		events = append(events, &domain.Event{
-			ID:          tx.TxHash, // Use Hash as ID for now
+			ID:          tx.TxHash,
 			EventType:   domain.EventTypeTransactionConfirmed,
 			ChainID:     p.cfg.ChainID,
 			BlockNumber: block.Number,

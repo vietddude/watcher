@@ -23,6 +23,11 @@ type UsageStats struct {
 	PredictedExhaustionMins int
 }
 
+// Config holds budget configuration.
+type Config struct {
+	DailyQuota int
+}
+
 // BudgetTracker manages RPC quota and rate limiting.
 type BudgetTracker interface {
 	RecordCall(chainID, providerName, method string)

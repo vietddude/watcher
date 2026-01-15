@@ -15,9 +15,15 @@ type ServerConfig struct {
 
 // ChainConfig holds settings for a specific blockchain.
 type ChainConfig struct {
-	ID             string        `yaml:"id"`
-	Type           string        `yaml:"type"` // e.g., "evm", "bitcoin"
-	RPCURL         string        `yaml:"rpc_url"`
-	FinalityBlocks uint64        `yaml:"finality_blocks"`
-	ScanInterval   time.Duration `yaml:"scan_interval"`
+	ID             string           `yaml:"id"`
+	Type           string           `yaml:"type"` // e.g., "evm", "bitcoin"
+	FinalityBlocks uint64           `yaml:"finality_blocks"`
+	ScanInterval   time.Duration    `yaml:"scan_interval"`
+	Providers      []ProviderConfig `yaml:"providers"`
+}
+
+// ProviderConfig holds settings for an RPC provider.
+type ProviderConfig struct {
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
 }

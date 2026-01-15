@@ -8,6 +8,7 @@ import (
 
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/indexing/backfill"
 	"github.com/vietddude/watcher/internal/indexing/emitter"
 	"github.com/vietddude/watcher/internal/indexing/health"
 	"github.com/vietddude/watcher/internal/indexing/indexer"
@@ -15,6 +16,7 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/reorg"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/chain/evm"
+	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/storage/memory"
@@ -24,6 +26,7 @@ import (
 type Watcher struct {
 	cfg          Config
 	indexers     map[string]indexer.Indexer
+	backfillers  map[string]*backfill.Processor
 	healthMon    *health.Monitor
 	healthServer *health.Server
 	store        *memory.MemoryStorage
@@ -32,16 +35,25 @@ type Watcher struct {
 
 // Config holds the application configuration.
 type Config struct {
-	ServerPort int
-	Chains     []ChainConfig
+	Port     int
+	Chains   []ChainConfig
+	Backfill backfill.ProcessorConfig
+	Budget   budget.Config
+	Reorg    reorg.Config
 }
 
 // ChainConfig holds configuration for a specific chain.
 type ChainConfig struct {
 	ChainID        string
-	RPCURL         string
 	FinalityBlocks uint64
 	ScanInterval   time.Duration
+	Providers      []ProviderConfig
+}
+
+// ProviderConfig holds configuration for an RPC provider.
+type ProviderConfig struct {
+	Name string
+	URL  string
 }
 
 // NewWatcher creates a new Watcher instance with all dependencies initialized.
@@ -65,32 +77,67 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	if len(cfg.Chains) == 0 {
 		allocation["default"] = 1.0
 	}
-	budgetTracker := budget.NewBudgetTracker(10000, allocation)
+	// Use config for budget quota if available, otherwise default
+	quota := cfg.Budget.DailyQuota
+	if quota == 0 {
+		quota = 10000
+	}
+	budgetTracker := budget.NewBudgetTracker(quota, allocation)
 
 	fetcher := &MultiChainFetcher{adapters: make(map[string]chain.Adapter)}
 	indexers := make(map[string]indexer.Indexer)
+	backfillers := make(map[string]*backfill.Processor)
 	chainIDs := make([]string, 0, len(cfg.Chains))
 
 	for _, chainCfg := range cfg.Chains {
-		// 3. Initialize RPC & Adapters
-		rpcProvider := provider.NewHTTPProvider(
-			chainCfg.ChainID, // Use ChainID as provider name
-			chainCfg.RPCURL,
-			10*time.Second,
-		)
+		chainID := chainCfg.ChainID
 
-		// Use EVM adapter by default
-		adapter := evm.NewEVMAdapter(chainCfg.ChainID, rpcProvider, chainCfg.FinalityBlocks)
-		fetcher.adapters[chainCfg.ChainID] = adapter
+		// 3. Initialize RPC Router & Coordinator
+		router := rpc.NewRouter(budgetTracker)
+
+		for _, p := range chainCfg.Providers {
+			rpcProvider := provider.NewHTTPProvider(
+				p.Name,
+				p.URL,
+				10*time.Second,
+			)
+			router.AddProvider(chainID, rpcProvider)
+		}
+
+		coordinator := rpc.NewCoordinator(router, budgetTracker)
+		coordinatedProvider := budget.NewCoordinatedProvider(chainID, coordinator)
+
+		// Use EVM adapter by default with CoordinatedProvider
+		adapter := evm.NewEVMAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
+		fetcher.adapters[chainID] = adapter
 
 		// 4. Initialize Components
-		reorgDetector := reorg.NewDetector(blockRepo)
+		reorgDetector := reorg.NewDetector(cfg.Reorg, blockRepo)
 
 		// Create Reorg Handler
 		reorgHandler := reorg.NewHandler(blockRepo, txRepo, cursorMgr)
 
 		// Create Recovery Handler (DefaultBackoff)
 		recoveryHandler := recovery.NewHandler(failedRepo, nil, recovery.DefaultBackoff(nil))
+
+		// Create Backfill Processor
+		bfProcessor := backfill.NewProcessor(
+			cfg.Backfill,
+			missingRepo,
+			func(chainID string, blockNum uint64) error {
+				// Re-use adapter to fetch block
+				block, err := adapter.GetBlock(context.Background(), blockNum)
+				if err != nil {
+					return err
+				}
+				if block == nil {
+					return fmt.Errorf("block %d not found", blockNum)
+				}
+				return blockRepo.Save(context.Background(), block)
+			},
+		)
+		bfProcessor.SetBudgetTracker(budgetTracker)
+		backfillers[chainID] = bfProcessor
 
 		// Create Emitter
 		baseEmitter := &LogEmitter{}
@@ -101,7 +148,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 		// 5. Create Indexer Pipeline
 		idxCfg := indexer.Config{
-			ChainID:         chainCfg.ChainID,
+			ChainID:         chainID,
 			ChainAdapter:    adapter,
 			Cursor:          cursorMgr,
 			Reorg:           reorgDetector,
@@ -116,8 +163,8 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		}
 
 		pipeline := indexer.NewPipeline(idxCfg)
-		indexers[chainCfg.ChainID] = pipeline
-		chainIDs = append(chainIDs, chainCfg.ChainID)
+		indexers[chainID] = pipeline
+		chainIDs = append(chainIDs, chainID)
 	}
 
 	// 6. Initialize Health Monitor
@@ -130,11 +177,12 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		fetcher,
 	)
 
-	healthServer := health.NewServer(healthMon, cfg.ServerPort)
+	healthServer := health.NewServer(healthMon, cfg.Port)
 
 	return &Watcher{
 		cfg:          cfg,
 		indexers:     indexers,
+		backfillers:  backfillers,
 		healthMon:    healthMon,
 		healthServer: healthServer,
 		store:        store,
@@ -144,8 +192,6 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 // Start starts the watcher and all its components.
 func (w *Watcher) Start(ctx context.Context) error {
-	w.log.Info("Starting Watcher...", "port", w.cfg.ServerPort)
-
 	// Start Health Server
 	go func() {
 		if err := w.healthServer.Start(); err != nil {
@@ -153,7 +199,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Start Indexers
+	// Start Indexers and Backfillers
 	for id, idx := range w.indexers {
 		w.log.Info("Starting indexer", "chain", id)
 		go func(id string, i indexer.Indexer) {
@@ -161,6 +207,16 @@ func (w *Watcher) Start(ctx context.Context) error {
 				w.log.Error("Indexer failed", "chain", id, "error", err)
 			}
 		}(id, idx)
+
+		// Start Backfiller
+		if bf, ok := w.backfillers[id]; ok {
+			w.log.Info("Starting backfill processor", "chain", id)
+			go func(id string, processor *backfill.Processor) {
+				if err := processor.Run(ctx, id); err != nil {
+					w.log.Error("Backfill processor failed", "chain", id, "error", err)
+				}
+			}(id, bf)
+		}
 	}
 
 	return nil

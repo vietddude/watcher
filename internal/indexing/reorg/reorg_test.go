@@ -80,7 +80,7 @@ func TestDetector_ParentHashMatch(t *testing.T) {
 	repo.addBlock(999, "hash_999", "hash_998")
 	repo.addBlock(1000, "hash_1000", "hash_999")
 
-	detector := NewDetector(repo)
+	detector := NewDetector(Config{}, repo)
 	ctx := context.Background()
 
 	// New block 1001 with correct parent hash
@@ -100,7 +100,7 @@ func TestDetector_ParentHashMismatch(t *testing.T) {
 	repo.addBlock(999, "hash_999", "hash_998")
 	repo.addBlock(1000, "hash_1000", "hash_999")
 
-	detector := NewDetector(repo)
+	detector := NewDetector(Config{}, repo)
 	ctx := context.Background()
 
 	// New block 1001 with WRONG parent hash (reorg happened)
@@ -119,7 +119,7 @@ func TestDetector_ParentHashMismatch(t *testing.T) {
 
 func TestDetector_NoStoredBlock(t *testing.T) {
 	repo := newMockBlockRepo()
-	detector := NewDetector(repo)
+	detector := NewDetector(Config{}, repo)
 	ctx := context.Background()
 
 	// Block 1001 with no stored block 1000
@@ -135,7 +135,7 @@ func TestDetector_NoStoredBlock(t *testing.T) {
 
 func TestDetector_BlockZero(t *testing.T) {
 	repo := newMockBlockRepo()
-	detector := NewDetector(repo)
+	detector := NewDetector(Config{}, repo)
 	ctx := context.Background()
 
 	// Block 0 should never trigger reorg

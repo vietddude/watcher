@@ -38,6 +38,9 @@ func (m *mockAdapter) FilterTransactions(ctx context.Context, txs []*domain.Tran
 func (m *mockAdapter) VerifyBlockHash(ctx context.Context, num uint64, hash string) (bool, error) {
 	return true, nil
 }
+func (m *mockAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
+	return nil
+}
 func (m *mockAdapter) GetFinalityDepth() uint64  { return 0 }
 func (m *mockAdapter) GetChainID() string        { return "mock" }
 func (m *mockAdapter) SupportsBloomFilter() bool { return false }
@@ -167,7 +170,7 @@ func TestPipeline_ProcessNextBlock_NormalFlow(t *testing.T) {
 		ChainID:      "ethereum",
 		ChainAdapter: adapter,
 		Cursor:       cursorMgr,
-		Reorg:        reorg.NewDetector(blockRepo),
+		Reorg:        reorg.NewDetector(reorg.Config{}, blockRepo),
 		Filter:       filterMod,
 		Emitter:      emitterMod,
 		BlockRepo:    blockRepo,
@@ -221,7 +224,7 @@ func TestPipeline_ReorgDetection(t *testing.T) {
 		ChainID:      "ethereum",
 		ChainAdapter: adapter,
 		Cursor:       cursorMgr,
-		Reorg:        reorg.NewDetector(blockRepo),
+		Reorg:        reorg.NewDetector(reorg.Config{}, blockRepo),
 		ReorgHandler: reorgHandler,
 		BlockRepo:    blockRepo,
 	}
