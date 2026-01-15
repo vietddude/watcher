@@ -4,9 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/vietddude/watcher/internal/infra/chain"
+	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/indexing/emitter"
 	"github.com/vietddude/watcher/internal/indexing/filter"
+	"github.com/vietddude/watcher/internal/indexing/recovery"
+	"github.com/vietddude/watcher/internal/indexing/reorg"
+	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -22,29 +25,31 @@ type Indexer interface {
 	GetStatus() Status
 }
 
-type Status struct {
-	ChainID         string
-	CurrentBlock    uint64
-	LatestBlock     uint64
-	Lag             int64
-	State           string
-	BlocksPerSecond float64
-	MissingBlocks   int
-	FailedBlocks    int
+// Config holds all dependencies for the pipeline
+type Config struct {
+	ChainID      string
+	ChainAdapter chain.Adapter
+	Cursor       cursor.Manager
+	Reorg        *reorg.Detector
+	ReorgHandler *reorg.Handler
+	Recovery     *recovery.Handler
+	Emitter      emitter.Emitter
+	Filter       filter.Filter
+
+	// Repositories
+	BlockRepo       storage.BlockRepository
+	TransactionRepo storage.TransactionRepository
+
+	// Settings
+	ScanInterval time.Duration
+	BatchSize    int
 }
 
-// Config holds indexer configuration
-type Config struct {
-	ChainID          string
-	ChainAdapter     chain.Adapter
-	Filter           filter.Filter
-	BlockRepo        storage.BlockRepository
-	TransactionRepo  storage.TransactionRepository
-	CursorRepo       storage.CursorRepository
-	MissingBlockRepo storage.MissingBlockRepository
-	FailedBlockRepo  storage.FailedBlockRepository
-	Emitter          emitter.Emitter
-	ScanInterval     time.Duration
-	BatchSize        int
-	FinalityBlocks   uint64
+// Status represents the current state of the indexer
+type Status struct {
+	ChainID      string
+	CurrentBlock uint64
+	LatestBlock  uint64
+	Lag          int64
+	Running      bool
 }
