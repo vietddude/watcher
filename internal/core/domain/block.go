@@ -51,11 +51,20 @@ type FailedBlock struct {
 	ChainID     string
 	BlockNumber uint64
 	FailureType FailureType
-	ErrorMsg    string
+	Error       string
 	RetryCount  int
+	Status      FailedBlockStatus
 	LastAttempt time.Time
 	CreatedAt   time.Time
 }
+
+type FailedBlockStatus string
+
+const (
+	FailedBlockStatusPending  FailedBlockStatus = "pending"
+	FailedBlockStatusResolved FailedBlockStatus = "resolved"
+	FailedBlockStatusIgnored  FailedBlockStatus = "ignored"
+)
 
 type FailureType string
 

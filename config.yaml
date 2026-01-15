@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+chains:
+  - id: "ethereum-mainnet"
+    type: "evm"
+    rpc_url: "https://eth.llamarpc.com"
+    finality_blocks: 12
+    scan_interval: 12s
+
+  - id: "bitcoin-mainnet"
+    type: "bitcoin"
+    rpc_url: "http://user:pass@localhost:8332"
+    finality_blocks: 6
+    scan_interval: 600s

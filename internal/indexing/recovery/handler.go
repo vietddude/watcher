@@ -93,8 +93,9 @@ func (h *Handler) HandleFailure(ctx context.Context, chainID string, blockNum ui
 		ChainID:     chainID,
 		BlockNumber: blockNum,
 		FailureType: failureType,
-		ErrorMsg:    err.Error(),
+		Error:       err.Error(),
 		RetryCount:  0,
+		Status:      domain.FailedBlockStatusPending,
 		LastAttempt: time.Now(),
 		CreatedAt:   time.Now(),
 	}

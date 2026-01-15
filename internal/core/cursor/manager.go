@@ -79,7 +79,7 @@ func (m *DefaultManager) Initialize(ctx context.Context, chainID string, startBl
 	cursor := &domain.Cursor{
 		ChainID:      chainID,
 		CurrentBlock: startBlock,
-		LastUpdated:  time.Now(),
+		UpdatedAt:    time.Now(),
 		State:        domain.CursorStateInit,
 		Metadata:     make(map[string]interface{}),
 	}

@@ -7,7 +7,7 @@ type Cursor struct {
 	ChainID          string
 	CurrentBlock     uint64
 	CurrentBlockHash string
-	LastUpdated      time.Time
+	UpdatedAt        time.Time
 	State            CursorState
 	Metadata         map[string]interface{}
 }
