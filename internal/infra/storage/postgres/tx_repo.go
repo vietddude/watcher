@@ -4,47 +4,53 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 )
 
+// TxRepo implements storage.TransactionRepository using PostgreSQL.
 type TxRepo struct {
-	db *sql.DB
+	db *DB
 }
 
-func NewTxRepo(db *PostgresDB) *TxRepo {
-	return &TxRepo{db: db.DB}
+// NewTxRepo creates a new PostgreSQL transaction repository.
+func NewTxRepo(db *DB) *TxRepo {
+	return &TxRepo{db: db}
 }
 
+// Save saves a transaction to the database.
 func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
 	query := `
 		INSERT INTO transactions (
-			chain_id, tx_hash, block_number, block_hash, tx_index, 
-			from_addr, to_addr, value, gas_used, gas_price, 
-			status, timestamp, raw_data, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-		ON CONFLICT (chain_id, tx_hash) DO NOTHING;
+			chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		ON CONFLICT (chain_id, tx_hash) DO UPDATE SET
+			block_number = EXCLUDED.block_number,
+			status = EXCLUDED.status
 	`
-	// Note: We use DO NOTHING for txs as they are immutable usually, or update if status changes?
-	// If status can change (reorg), we might need update. But reorg handles deletes or updates.
-	// Let's stick to DO NOTHING. UpdateStatus handles status changes.
+	// Note: Schema in DB might differ slightly from domain struct which has more fields (e.g. BlockHash, TxIndex, RawData etc. if added later).
+	// Based on migration:
+	// chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
 
 	_, err := r.db.ExecContext(ctx, query,
-		tx.ChainID, tx.TxHash, tx.BlockNumber, tx.BlockHash, tx.TxIndex,
+		tx.ChainID, tx.TxHash, tx.BlockNumber,
 		tx.From, tx.To, tx.Value, tx.GasUsed, tx.GasPrice,
-		tx.Status, tx.Timestamp, tx.RawData,
+		string(tx.Status),
 	)
 	if err != nil {
-		return fmt.Errorf("save tx: %w", err)
+		return fmt.Errorf("failed to save transaction: %w", err)
 	}
 	return nil
 }
 
+// SaveBatch saves multiple transactions.
 func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error {
 	if len(txs) == 0 {
 		return nil
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
+
+	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -52,12 +58,13 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 
 	query := `
 		INSERT INTO transactions (
-			chain_id, tx_hash, block_number, block_hash, tx_index, 
-			from_addr, to_addr, value, gas_used, gas_price, 
-			status, timestamp, raw_data, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-		ON CONFLICT (chain_id, tx_hash) DO NOTHING;
+			chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		ON CONFLICT (chain_id, tx_hash) DO UPDATE SET
+			block_number = EXCLUDED.block_number,
+			status = EXCLUDED.status
 	`
+
 	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		return err
@@ -66,87 +73,99 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 
 	for _, t := range txs {
 		_, err := stmt.ExecContext(ctx,
-			t.ChainID, t.TxHash, t.BlockNumber, t.BlockHash, t.TxIndex,
+			t.ChainID, t.TxHash, t.BlockNumber,
 			t.From, t.To, t.Value, t.GasUsed, t.GasPrice,
-			t.Status, t.Timestamp, t.RawData,
+			string(t.Status),
 		)
 		if err != nil {
-			return fmt.Errorf("save batch tx: %w", err)
+			return err
 		}
 	}
 
 	return tx.Commit()
 }
 
-func (r *TxRepo) GetByHash(ctx context.Context, chainID string, hash string) (*domain.Transaction, error) {
-	query := `
-		SELECT 
-			chain_id, tx_hash, block_number, block_hash, tx_index, 
-			from_addr, to_addr, value, gas_used, gas_price, 
-			status, timestamp, raw_data 
-		FROM transactions 
-		WHERE chain_id = $1 AND tx_hash = $2
-	`
-	row := r.db.QueryRowContext(ctx, query, chainID, hash)
-	return scanTx(row)
+type txRow struct {
+	ChainID     string    `db:"chain_id"`
+	TxHash      string    `db:"tx_hash"`
+	BlockNumber uint64    `db:"block_number"`
+	From        string    `db:"from_address"`
+	To          *string   `db:"to_address"` // Nullable
+	Value       string    `db:"value"`
+	GasUsed     uint64    `db:"gas_used"`
+	GasPrice    string    `db:"gas_price"`
+	Status      string    `db:"status"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
-func (r *TxRepo) GetByBlock(ctx context.Context, chainID string, number uint64) ([]*domain.Transaction, error) {
+func (t *txRow) toDomain() *domain.Transaction {
+	tx := &domain.Transaction{
+		ChainID:     t.ChainID,
+		TxHash:      t.TxHash,
+		BlockNumber: t.BlockNumber,
+		From:        t.From,
+		Value:       t.Value,
+		GasUsed:     t.GasUsed,
+		GasPrice:    t.GasPrice,
+		Status:      domain.TxStatus(t.Status),
+	}
+	if t.To != nil {
+		tx.To = *t.To
+	}
+	return tx
+}
+
+// GetByHash retrieves a transaction by hash.
+func (r *TxRepo) GetByHash(ctx context.Context, chainID string, txHash string) (*domain.Transaction, error) {
 	query := `
-		SELECT 
-			chain_id, tx_hash, block_number, block_hash, tx_index, 
-			from_addr, to_addr, value, gas_used, gas_price, 
-			status, timestamp, raw_data 
-		FROM transactions 
+		SELECT chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
+		FROM transactions
+		WHERE chain_id = $1 AND tx_hash = $2
+	`
+
+	var row txRow
+	err := r.db.GetContext(ctx, &row, query, chainID, txHash)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction: %w", err)
+	}
+
+	return row.toDomain(), nil
+}
+
+// GetByBlock retrieves all transactions in a block.
+func (r *TxRepo) GetByBlock(ctx context.Context, chainID string, blockNumber uint64) ([]*domain.Transaction, error) {
+	query := `
+		SELECT chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
+		FROM transactions
 		WHERE chain_id = $1 AND block_number = $2
 	`
-	rows, err := r.db.QueryContext(ctx, query, chainID, number)
+
+	var rows []txRow
+	err := r.db.SelectContext(ctx, &rows, query, chainID, blockNumber)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
-	defer rows.Close()
 
 	var txs []*domain.Transaction
-	for rows.Next() {
-		tx, err := scanTx(rows)
-		if err != nil {
-			return nil, err
-		}
-		txs = append(txs, tx)
+	for _, row := range rows {
+		txs = append(txs, row.toDomain())
 	}
 	return txs, nil
 }
 
-func (r *TxRepo) UpdateStatus(ctx context.Context, chainID string, hash string, status domain.TxStatus) error {
+// UpdateStatus updates transaction status.
+func (r *TxRepo) UpdateStatus(ctx context.Context, chainID string, txHash string, status domain.TxStatus) error {
 	query := `UPDATE transactions SET status = $1 WHERE chain_id = $2 AND tx_hash = $3`
-	_, err := r.db.ExecContext(ctx, query, status, chainID, hash)
+	_, err := r.db.ExecContext(ctx, query, string(status), chainID, txHash)
 	return err
 }
 
-func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, number uint64) error {
+// DeleteByBlock deletes transactions in a block.
+func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, blockNumber uint64) error {
 	query := `DELETE FROM transactions WHERE chain_id = $1 AND block_number = $2`
-	_, err := r.db.ExecContext(ctx, query, chainID, number)
+	_, err := r.db.ExecContext(ctx, query, chainID, blockNumber)
 	return err
-}
-
-func scanTx(scanner interface{ Scan(...interface{}) error }) (*domain.Transaction, error) {
-	var tx domain.Transaction
-	var status string
-	var rawData []byte
-
-	err := scanner.Scan(
-		&tx.ChainID, &tx.TxHash, &tx.BlockNumber, &tx.BlockHash, &tx.TxIndex,
-		&tx.From, &tx.To, &tx.Value, &tx.GasUsed, &tx.GasPrice,
-		&status, &tx.Timestamp, &rawData,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil // Not found
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	tx.Status = domain.TxStatus(status)
-	tx.RawData = rawData
-	return &tx, nil
 }

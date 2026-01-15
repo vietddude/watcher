@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build artifacts
+bin/
+dist/
+*.exe
+watcher
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.env
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage.out
+coverage.html
+
+# Docker
+docker-compose.override.yml

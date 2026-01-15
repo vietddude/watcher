@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 )
 
 // Pipeline implements the Indexer interface
@@ -131,6 +132,10 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 
 	// Log block processing
 	slog.Info("Processing block", "block", targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
+
+	// Record metrics
+	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainID).Inc()
+	metrics.TransactionsProcessed.WithLabelValues(p.cfg.ChainID).Add(float64(len(txs)))
 
 	// 5. Filter Transactions using bloom filter
 	var relevantTxs []*domain.Transaction

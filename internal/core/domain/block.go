@@ -23,6 +23,12 @@ const (
 	BlockStatusFailed    BlockStatus = "failed"
 )
 
+// BlockRange represents a range of blocks
+type BlockRange struct {
+	From uint64
+	To   uint64
+}
+
 // MissingBlock represents a gap in indexed blocks
 type MissingBlock struct {
 	ID          string

@@ -36,6 +36,7 @@ type BudgetTracker interface {
 	CanMakeCall(chainID string) bool
 	CanUseProvider(chainID, providerName string) bool
 	GetThrottleDelay(chainID string) time.Duration
+	GetUsagePercent() float64
 	Reset()
 }
 
@@ -273,4 +274,20 @@ func (bt *DefaultBudgetTracker) resetUnsafe() {
 
 	now := time.Now()
 	bt.resetTime = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+}
+
+// GetUsagePercent returns the overall usage percentage across all chains.
+func (bt *DefaultBudgetTracker) GetUsagePercent() float64 {
+	bt.mu.RLock()
+	defer bt.mu.RUnlock()
+
+	totalCalls := 0
+	for _, budget := range bt.chainUsage {
+		totalCalls += budget.totalCalls
+	}
+
+	if bt.dailyLimit == 0 {
+		return 0
+	}
+	return float64(totalCalls) / float64(bt.dailyLimit) * 100
 }

@@ -14,39 +14,52 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/indexer"
 	"github.com/vietddude/watcher/internal/indexing/recovery"
 	"github.com/vietddude/watcher/internal/indexing/reorg"
+	"github.com/vietddude/watcher/internal/indexing/rescan"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/chain/evm"
+	redisclient "github.com/vietddude/watcher/internal/infra/redis"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"github.com/vietddude/watcher/internal/infra/storage"
 	"github.com/vietddude/watcher/internal/infra/storage/memory"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres"
+
+	"github.com/pressly/goose/v3"
 )
 
 // Watcher is the main application struct that manages the indexer lifecycle.
 type Watcher struct {
-	cfg          Config
-	indexers     map[string]indexer.Indexer
-	backfillers  map[string]*backfill.Processor
-	healthMon    *health.Monitor
-	healthServer *health.Server
-	store        *memory.MemoryStorage
-	log          *slog.Logger
+	cfg           Config
+	indexers      map[string]indexer.Indexer
+	backfillers   map[string]*backfill.Processor
+	rescanWorkers map[string]*rescan.Worker
+	healthMon     *health.Monitor
+	healthServer  *health.Server
+	store         *memory.MemoryStorage
+	redisClient   *redisclient.Client
+	log           *slog.Logger
 }
 
 // Config holds the application configuration.
 type Config struct {
-	Port     int
-	Chains   []ChainConfig
-	Backfill backfill.ProcessorConfig
-	Budget   budget.Config
-	Reorg    reorg.Config
+	Port                int
+	Chains              []ChainConfig
+	Backfill            backfill.ProcessorConfig
+	Budget              budget.Config
+	Reorg               reorg.Config
+	Redis               redisclient.Config
+	Database            postgres.Config // Add database config
+	RescanRangesEnabled bool            // CLI flag
 }
 
 // ChainConfig holds configuration for a specific chain.
 type ChainConfig struct {
 	ChainID        string
+	InternalCode   string // e.g., "ETHEREUM_MAINNET"
 	FinalityBlocks uint64
 	ScanInterval   time.Duration
+	RescanRanges   bool // Enable rescan worker
 	Providers      []ProviderConfig
 }
 
@@ -58,13 +71,68 @@ type ProviderConfig struct {
 
 // NewWatcher creates a new Watcher instance with all dependencies initialized.
 func NewWatcher(cfg Config) (*Watcher, error) {
-	// 1. Initialize Storage (In-Memory for now)
-	store := memory.NewMemoryStorage()
-	blockRepo := memory.NewBlockRepo(store)
-	txRepo := memory.NewTxRepo(store)
-	cursorRepo := memory.NewCursorRepo(store)
-	missingRepo := memory.NewMissingRepo(store)
-	failedRepo := memory.NewFailedRepo(store)
+	// 1. Initialize Storage
+	var blockRepo storage.BlockRepository
+	var txRepo storage.TransactionRepository
+	var cursorRepo storage.CursorRepository
+	var missingRepo storage.MissingBlockRepository
+	var failedRepo storage.FailedBlockRepository
+	var store *memory.MemoryStorage // Only for cleanup if used
+
+	simpleFilter := NewSimpleFilter()
+
+	if cfg.Database.URL != "" {
+		db, err := postgres.NewDB(context.Background(), postgres.Config{
+			URL:      cfg.Database.URL,
+			MaxConns: cfg.Database.MaxConns,
+			MinConns: cfg.Database.MinConns,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to init db: %w", err)
+		}
+
+		// Run migrations
+		// Note: Goose needs direct *sql.DB which sqlx.DB wraps
+		if err := goose.SetDialect("postgres"); err != nil {
+			return nil, err
+		}
+		// Assuming migrations are in "migrations" folder relative to CWD
+		if err := goose.Up(db.DB.DB, "migrations"); err != nil {
+			return nil, fmt.Errorf("failed to migrate db: %w", err)
+		}
+
+		blockRepo = postgres.NewBlockRepo(db)
+		txRepo = postgres.NewTxRepo(db)
+		cursorRepo = postgres.NewCursorRepo(db)
+		missingRepo = postgres.NewMissingBlockRepo(db)
+		failedRepo = postgres.NewFailedBlockRepo(db)
+
+		// Initialize Wallet Repo and load filter
+		walletRepo := postgres.NewWalletRepo(db)
+		wallets, err := walletRepo.GetAll(context.Background())
+		if err != nil {
+			slog.Warn("Failed to load wallet addresses", "error", err)
+		}
+
+		// Populate filter
+		for _, w := range wallets {
+			simpleFilter.Add(w.Address)
+		}
+		slog.Info("Loaded wallet addresses into filter", "count", len(wallets))
+
+		slog.Info("Using PostgreSQL storage")
+	} else {
+		store = memory.NewMemoryStorage()
+		blockRepo = memory.NewBlockRepo(store)
+		txRepo = memory.NewTxRepo(store)
+		cursorRepo = memory.NewCursorRepo(store)
+		missingRepo = memory.NewMissingRepo(store)
+		failedRepo = memory.NewFailedRepo(store)
+
+		// Empty filter for memory mode
+		// simpleFilter initialized below
+		slog.Info("Using Memory storage")
+	}
 
 	// 2. Initialize Shared Components
 	cursorMgr := cursor.NewManager(cursorRepo)
@@ -143,9 +211,6 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		baseEmitter := &LogEmitter{}
 		finalityEmitter := emitter.NewFinalityBuffer(baseEmitter, chainCfg.FinalityBlocks)
 
-		// Create Filter (Simple)
-		simpleFilter := NewSimpleFilter()
-
 		// 5. Create Indexer Pipeline
 		idxCfg := indexer.Config{
 			ChainID:         chainID,
@@ -179,14 +244,44 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 	healthServer := health.NewServer(healthMon, cfg.Port)
 
+	// 7. Initialize Redis and Rescan Workers
+	var redisClient *redisclient.Client
+	rescanWorkers := make(map[string]*rescan.Worker)
+
+	if cfg.Redis.URL != "" && cfg.RescanRangesEnabled {
+		var err error
+		redisClient, err = redisclient.NewClient(cfg.Redis)
+		if err != nil {
+			slog.Warn("Failed to connect to Redis, rescan disabled", "error", err)
+		} else {
+			// Initialize rescan workers for chains with rescan_ranges enabled
+			for _, chainCfg := range cfg.Chains {
+				if chainCfg.RescanRanges && chainCfg.InternalCode != "" {
+					worker := rescan.NewWorker(
+						rescan.DefaultConfig(),
+						chainCfg.InternalCode,
+						redisClient,
+						fetcher.adapters[chainCfg.ChainID],
+						blockRepo,
+						txRepo,
+					)
+					rescanWorkers[chainCfg.InternalCode] = worker
+					slog.Info("Rescan worker initialized", "chain", chainCfg.InternalCode)
+				}
+			}
+		}
+	}
+
 	return &Watcher{
-		cfg:          cfg,
-		indexers:     indexers,
-		backfillers:  backfillers,
-		healthMon:    healthMon,
-		healthServer: healthServer,
-		store:        store,
-		log:          slog.Default(),
+		cfg:           cfg,
+		indexers:      indexers,
+		backfillers:   backfillers,
+		rescanWorkers: rescanWorkers,
+		healthMon:     healthMon,
+		healthServer:  healthServer,
+		store:         store,
+		redisClient:   redisClient,
+		log:           slog.Default(),
 	}, nil
 }
 
@@ -219,6 +314,16 @@ func (w *Watcher) Start(ctx context.Context) error {
 		}
 	}
 
+	// Start Rescan Workers
+	for code, worker := range w.rescanWorkers {
+		w.log.Info("Starting rescan worker", "chain", code)
+		go func(code string, wrk *rescan.Worker) {
+			if err := wrk.Run(ctx); err != nil {
+				w.log.Error("Rescan worker failed", "chain", code, "error", err)
+			}
+		}(code, worker)
+	}
+
 	return nil
 }
 
@@ -229,6 +334,13 @@ func (w *Watcher) Stop(ctx context.Context) error {
 	// Stop Indexers
 	for _, idx := range w.indexers {
 		idx.Stop()
+	}
+
+	// Close Redis
+	if w.redisClient != nil {
+		if err := w.redisClient.Close(); err != nil {
+			w.log.Warn("Failed to close Redis", "error", err)
+		}
 	}
 
 	// Stop Health Server

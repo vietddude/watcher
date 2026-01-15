@@ -3,7 +3,9 @@ package budget
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
@@ -24,22 +26,51 @@ func NewCoordinatedProvider(chainID string, coordinator *Coordinator) *Coordinat
 
 // Call makes a coordinated RPC call with failover and budget checks.
 func (p *CoordinatedProvider) Call(ctx context.Context, method string, params []any) (any, error) {
-	return p.coordinator.CallWithCoordination(ctx, p.chainID, method, params)
+	start := time.Now()
+
+	// Get provider name for metrics
+	prov, _ := p.coordinator.GetBestProvider(p.chainID)
+	providerName := "unknown"
+	if prov != nil {
+		providerName = prov.GetName()
+	}
+
+	result, err := p.coordinator.CallWithCoordination(ctx, p.chainID, method, params)
+
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	metrics.RPCCallsTotal.WithLabelValues(p.chainID, providerName, method).Inc()
+	metrics.RPCLatency.WithLabelValues(p.chainID, providerName, method).Observe(duration)
+
+	if err != nil {
+		metrics.RPCErrorsTotal.WithLabelValues(p.chainID, providerName, "call_error").Inc()
+	}
+
+	return result, err
 }
 
 // BatchCall - Coordinated batch calls are not fully implemented yet, falling back to sequential calls or error.
-// For now, we can try to implement a basic version or return error if not critical.
-// Since EVMAdapter mostly uses single calls, we'll start with basic implementation if possible,
-// or just error out. Given likely usage, let's implement a simple loop for now
-// or better: just delegate to the "best" provider without failover for the whole batch?
-// Failover within a batch is complex.
-// Let's implement a "best effort" using current best provider to match interface.
 func (p *CoordinatedProvider) BatchCall(ctx context.Context, requests []provider.BatchRequest) ([]provider.BatchResponse, error) {
 	bestProvider, err := p.coordinator.GetBestProvider(p.chainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider for batch call: %w", err)
 	}
-	return bestProvider.BatchCall(ctx, requests)
+
+	providerName := bestProvider.GetName()
+	start := time.Now()
+
+	result, err := bestProvider.BatchCall(ctx, requests)
+
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	metrics.RPCCallsTotal.WithLabelValues(p.chainID, providerName, "batch").Add(float64(len(requests)))
+	metrics.RPCLatency.WithLabelValues(p.chainID, providerName, "batch").Observe(duration)
+
+	if err != nil {
+		metrics.RPCErrorsTotal.WithLabelValues(p.chainID, providerName, "batch_error").Inc()
+	}
+
+	return result, err
 }
 
 // GetName returns a generic name as it represents multiple providers.
@@ -62,10 +93,6 @@ func (p *CoordinatedProvider) GetHealth() provider.HealthStatus {
 }
 
 // Close closes the underlying coordinator (which might verify resources).
-// Coordinator doesn't have Close(), but Router does?
-// Providers in router need closing.
-// Current Coordinator struct doesn't have Close.
-// We can leave this no-op or implement cleanup if needed.
 func (p *CoordinatedProvider) Close() error {
 	return nil
 }

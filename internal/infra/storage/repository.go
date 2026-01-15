@@ -127,3 +127,15 @@ type FailedBlockRepository interface {
 	// Count returns the count of failed blocks
 	Count(ctx context.Context, chainID string) (int, error)
 }
+
+// WalletRepository handles wallet address storage
+type WalletRepository interface {
+	// Save saves a wallet address
+	Save(ctx context.Context, wallet *domain.WalletAddress) error
+
+	// GetByAddress retrieves a wallet by address
+	GetByAddress(ctx context.Context, address string) (*domain.WalletAddress, error)
+
+	// GetAll retrieves all wallet addresses
+	GetAll(ctx context.Context) ([]*domain.WalletAddress, error)
+}

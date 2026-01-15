@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/cursor"
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -77,24 +78,27 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 				lag = 0
 			}
 			health.BlockLag = uint64(lag)
+			// Record metric
+			metrics.CurrentBlockLag.WithLabelValues(chainID).Set(float64(lag))
 		}
 
 		// 2. Missing Blocks
 		count, err := m.missingRepo.Count(ctx, chainID)
 		if err == nil {
 			health.MissingBlocks = count
+			metrics.MissingBlocksCount.WithLabelValues(chainID).Set(float64(count))
 		}
 
 		// 3. Failed Blocks
 		failedCount, err := m.failedRepo.Count(ctx, chainID)
 		if err == nil {
 			health.FailedBlocks = failedCount
+			metrics.FailedBlocksCount.WithLabelValues(chainID).Set(float64(failedCount))
 		}
 
-		// 4. RPC Error Rate (Approximation via budget usage for now, or placeholder)
-		// Since we don't have direct error rate metrics exposed from BudgetTracker yet,
-		// we'll stick to lag and queue sizes for status determination.
-		// Detailed status logic from docs:
+		// 4. RPC Quota Usage
+		quotaPercent := m.budgetTracker.GetUsagePercent()
+		metrics.RPCQuotaUsedPercent.WithLabelValues(chainID).Set(quotaPercent)
 
 		// Evaluate Status
 		if health.BlockLag > 100 || health.MissingBlocks > 10 || health.FailedBlocks > 50 {
