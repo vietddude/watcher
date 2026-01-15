@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"flag"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/vietddude/stylelog"
 	"github.com/vietddude/watcher/internal/control"
 	"github.com/vietddude/watcher/internal/core/config"
 )
@@ -19,8 +19,7 @@ func main() {
 	flag.Parse()
 
 	// Setup logging
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	logger := stylelog.InitDefault()
 
 	logger.Info("Starting Watcher...", "config", *configPath)
 
