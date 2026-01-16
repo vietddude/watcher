@@ -76,21 +76,6 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 		}
 
 		// 1. Get Block Lag
-		latest, err := m.heightFetcher.GetLatestHeight(ctx, chainID)
-		if err != nil {
-			// If we can't get height, that's degradation
-			health.Status = StatusDegraded
-		} else {
-			lag, _ := m.cursorMgr.GetLag(ctx, chainID, latest)
-			if lag < 0 {
-				lag = 0
-			}
-			health.BlockLag = uint64(lag)
-			// Record metric
-			metrics.CurrentBlockLag.WithLabelValues(chainName).Set(float64(lag))
-			metrics.ChainLatestBlock.WithLabelValues(chainName).Set(float64(latest))
-			metrics.IndexerLatestBlock.WithLabelValues(chainName).Set(float64(latest - uint64(lag)))
-		}
 
 		// 2. Missing Blocks
 		count, err := m.missingRepo.Count(ctx, chainID)

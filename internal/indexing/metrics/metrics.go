@@ -15,15 +15,6 @@ var (
 		[]string{"chain"},
 	)
 
-	// CurrentBlockLag tracks how far behind the indexer is
-	CurrentBlockLag = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "watcher_current_block_lag",
-			Help: "Current block lag (chain head - indexed block)",
-		},
-		[]string{"chain"},
-	)
-
 	// TransactionsProcessed tracks total transactions processed per chain
 	TransactionsProcessed = promauto.NewCounterVec(
 		prometheus.CounterOpts{
