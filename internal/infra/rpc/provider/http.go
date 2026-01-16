@@ -19,9 +19,9 @@ type HTTPProvider struct {
 
 	mu           sync.RWMutex
 	health       HealthStatus
+	totalLatency time.Duration
 	successCount int
 	failureCount int
-	totalLatency time.Duration
 	requestCount int
 
 	Monitor *ProviderMonitor
@@ -66,20 +66,20 @@ func (p *HTTPProvider) Call(ctx context.Context, method string, params []any) (a
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.endpoint, bytes.NewReader(jsonData))
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("rpc call: %w", err)
 	}
 	defer resp.Body.Close()
@@ -90,25 +90,25 @@ func (p *HTTPProvider) Call(ctx context.Context, method string, params []any) (a
 	if resp.StatusCode == 429 {
 		retryAfter := resp.Header.Get("Retry-After")
 		p.Monitor.RecordThrottle(429, retryAfter)
-		p.recordFailure(latency)
+		p.recordFailure()
 		return nil, fmt.Errorf("rate limited (429), retry after: %s", retryAfter)
 	}
 
 	// IP blocked detection
 	if resp.StatusCode == 403 {
 		p.Monitor.RecordThrottle(403, "")
-		p.recordFailure(latency)
+		p.recordFailure()
 		return nil, fmt.Errorf("ip blocked (403)")
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		p.recordFailure(latency)
+		p.recordFailure()
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		p.recordFailure(latency)
+		p.recordFailure()
 
 		if p.Monitor.DetectThrottlePattern(string(body)) {
 			return nil, fmt.Errorf("throttle detected in response: %s", string(body))
@@ -123,7 +123,7 @@ func (p *HTTPProvider) Call(ctx context.Context, method string, params []any) (a
 	}
 
 	if err := json.Unmarshal(body, &rpcResp); err != nil {
-		p.recordFailure(latency)
+		p.recordFailure()
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
@@ -134,11 +134,11 @@ func (p *HTTPProvider) Call(ctx context.Context, method string, params []any) (a
 		}
 
 		if p.Monitor.DetectThrottlePattern(errMsg) {
-			p.recordFailure(latency)
+			p.recordFailure()
 			return nil, fmt.Errorf("throttle in rpc error: %s", errMsg)
 		}
 
-		p.recordFailure(latency)
+		p.recordFailure()
 		return nil, fmt.Errorf("rpc error: %s", errMsg)
 	}
 
@@ -164,27 +164,27 @@ func (p *HTTPProvider) BatchCall(ctx context.Context, requests []BatchRequest) (
 
 	jsonData, err := json.Marshal(batchReq)
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("marshal batch: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.endpoint, bytes.NewReader(jsonData))
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("batch call: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
@@ -194,7 +194,7 @@ func (p *HTTPProvider) BatchCall(ctx context.Context, requests []BatchRequest) (
 	}
 
 	if err := json.Unmarshal(body, &batchResp); err != nil {
-		p.recordFailure(time.Since(start))
+		p.recordFailure()
 		return nil, fmt.Errorf("parse batch response: %w", err)
 	}
 
@@ -273,7 +273,7 @@ func (p *HTTPProvider) recordSuccess(latency time.Duration) {
 	}
 }
 
-func (p *HTTPProvider) recordFailure(latency time.Duration) {
+func (p *HTTPProvider) recordFailure() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

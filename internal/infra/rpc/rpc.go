@@ -172,6 +172,12 @@ type Coordinator = budget.Coordinator
 // CoordinatorConfig holds configuration for the Coordinator.
 type CoordinatorConfig = budget.CoordinatorConfig
 
+// BudgetConfig holds budget configuration.
+type BudgetConfig = budget.Config
+
+// CoordinatedProvider wraps a Coordinator to implement the Provider interface.
+type CoordinatedProvider = budget.CoordinatedProvider
+
 // NewBudgetTracker creates a new budget tracker.
 func NewBudgetTracker(dailyLimit int, budgetAllocation map[string]float64) *DefaultBudgetTracker {
 	return budget.NewBudgetTracker(dailyLimit, budgetAllocation)
@@ -195,4 +201,9 @@ func NewCoordinatorWithConfig(router Router, b BudgetTracker, config Coordinator
 // DefaultCoordinatorConfig returns sensible coordinator defaults.
 func DefaultCoordinatorConfig() CoordinatorConfig {
 	return budget.DefaultCoordinatorConfig()
+}
+
+// NewCoordinatedProvider creates a provider that uses coordination logic.
+func NewCoordinatedProvider(chainID string, coordinator *Coordinator) *CoordinatedProvider {
+	return budget.NewCoordinatedProvider(chainID, coordinator)
 }

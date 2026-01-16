@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/rpc/routing"
 )
@@ -209,6 +210,8 @@ func (c *Coordinator) RotateIfNeeded(chainID string, currentProvider provider.Pr
 	if c.onRotation != nil {
 		c.onRotation(chainID, currentProvider.GetName(), newProvider.GetName(), reason)
 	}
+
+	metrics.RPCFailoverTotal.WithLabelValues(chainID, currentProvider.GetName(), newProvider.GetName(), reason).Inc()
 
 	return newProvider, true, reason
 }
