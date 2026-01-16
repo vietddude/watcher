@@ -234,6 +234,8 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		// 5. Create Indexer Pipeline
 		idxCfg := indexer.Config{
 			ChainID:         chainID,
+			ChainName:       chainCfg.InternalCode,
+			ChainType:       chainCfg.Type,
 			ChainAdapter:    adapter,
 			Cursor:          cursorMgr,
 			Reorg:           reorgDetector,

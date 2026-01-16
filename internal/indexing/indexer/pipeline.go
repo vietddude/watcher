@@ -152,7 +152,11 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	}
 
 	// Log block processing
-	slog.Info("Processing block", "chain", p.cfg.ChainID, "block", targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
+	label := "block"
+	if p.cfg.ChainType == "sui" {
+		label = "checkpoint"
+	}
+	slog.Info(fmt.Sprintf("Processing %s", label), "chain", p.cfg.ChainName, label, targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
 
 	// Record metrics
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainID).Inc()

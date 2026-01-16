@@ -1,0 +1,58 @@
+# Server Configuration
+# holds HTTP server settings
+server:
+  port: 8080
+
+# Logging Configuration
+logging:
+  # Level can be: debug, info, warn, error
+  level: "info"
+  # Format can be: json, text
+  format: "text"
+
+# Database Configuration (PostgreSQL)
+database:
+  url: "postgres://user:password@localhost:5432/watcher?sslmode=disable"
+  max_conns: 20
+  min_conns: 5
+
+# Redis Configuration
+redis:
+  url: "redis://localhost:6379"
+  # Optional password
+  password: ""
+
+# Chains Configuration
+# You can configure multiple chains here
+chains:
+  - id: "1"
+    type: "evm"
+    internal_code: "ETHEREUM_MAINNET"
+    finality_blocks: 12
+    # Duration string, e.g., "10s", "1m"
+    scan_interval: "12s"
+    # Enable rescan worker
+    rescan_ranges: true
+    providers:
+      - name: "public"
+        url: "https://ethereum-rpc.publicnode.com"
+  
+  - id: "137"
+    type: "evm"
+    internal_code: "POLYGON_MAINNET"
+    finality_blocks: 256
+    scan_interval: "2s"
+    rescan_ranges: false
+    providers:
+      - name: "public"
+        url: "https://polygon-rpc.com"
+
+  - id: "784"
+    type: "sui"
+    internal_code: "SUI_TEST"
+    finality_blocks: 12
+    scan_interval: "10s"
+    rescan_ranges: true
+    providers:
+      - name: "public"
+        url: "https://fullnode.testnet.sui.io:443"
