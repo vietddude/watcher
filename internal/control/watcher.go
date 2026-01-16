@@ -157,9 +157,11 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	indexers := make(map[string]indexer.Indexer)
 	backfillers := make(map[string]*backfill.Processor)
 	chainIDs := make([]string, 0, len(cfg.Chains))
+	chainNames := make(map[string]string)
 
 	for _, chainCfg := range cfg.Chains {
 		chainID := chainCfg.ChainID
+		chainNames[chainID] = chainCfg.InternalCode
 
 		// 3. Initialize RPC Router & Coordinator
 		router := rpc.NewRouter(budgetTracker)
@@ -185,7 +187,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		}
 
 		coordinator := rpc.NewCoordinator(router, budgetTracker)
-		coordinatedProvider := rpc.NewCoordinatedProvider(chainID, coordinator)
+		coordinatedProvider := rpc.NewCoordinatedProvider(chainID, chainCfg.InternalCode, coordinator)
 
 		// Use EVM adapter by default with CoordinatedProvider
 		var adapter chain.Adapter
@@ -256,7 +258,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 	// 6. Initialize Health Monitor
 	healthMon := health.NewMonitor(
-		chainIDs,
+		chainNames,
 		cursorMgr,
 		missingRepo,
 		failedRepo,
@@ -315,6 +317,9 @@ func (w *Watcher) Start(ctx context.Context) error {
 			w.log.Error("Health server failed", "error", err)
 		}
 	}()
+
+	// Start Health Monitor Background Tasks
+	go w.healthMon.Start(ctx)
 
 	// Start Indexers and Backfillers
 	for id, idx := range w.indexers {

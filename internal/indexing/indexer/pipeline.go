@@ -159,8 +159,10 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	slog.Info(fmt.Sprintf("Processing %s", label), "chain", p.cfg.ChainName, label, targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
 
 	// Record metrics
-	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainID).Inc()
-	metrics.TransactionsProcessed.WithLabelValues(p.cfg.ChainID).Add(float64(len(txs)))
+	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
+	metrics.TransactionsProcessed.WithLabelValues(p.cfg.ChainName).Add(float64(len(txs)))
+	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
+	metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum)) // Use processed block as proxy for latest if health check fails
 
 	// 5. Filter Transactions using bloom filter
 	var relevantTxs []*domain.Transaction

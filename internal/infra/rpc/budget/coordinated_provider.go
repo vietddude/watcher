@@ -13,13 +13,15 @@ import (
 // This allows the EVMAdapter to use the failover/coordination logic transparently.
 type CoordinatedProvider struct {
 	chainID     string
+	chainName   string // For metrics
 	coordinator *Coordinator
 }
 
 // NewCoordinatedProvider creates a new provider that uses coordination logic.
-func NewCoordinatedProvider(chainID string, coordinator *Coordinator) *CoordinatedProvider {
+func NewCoordinatedProvider(chainID, chainName string, coordinator *Coordinator) *CoordinatedProvider {
 	return &CoordinatedProvider{
 		chainID:     chainID,
+		chainName:   chainName,
 		coordinator: coordinator,
 	}
 }
@@ -39,11 +41,11 @@ func (p *CoordinatedProvider) Call(ctx context.Context, method string, params []
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	metrics.RPCCallsTotal.WithLabelValues(p.chainID, providerName, method).Inc()
-	metrics.RPCLatency.WithLabelValues(p.chainID, providerName, method).Observe(duration)
+	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, method).Inc()
+	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, method).Observe(duration)
 
 	if err != nil {
-		metrics.RPCErrorsTotal.WithLabelValues(p.chainID, providerName, "call_error").Inc()
+		metrics.RPCErrorsTotal.WithLabelValues(p.chainName, providerName, "call_error").Inc()
 	}
 
 	return result, err
@@ -63,11 +65,11 @@ func (p *CoordinatedProvider) BatchCall(ctx context.Context, requests []provider
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	metrics.RPCCallsTotal.WithLabelValues(p.chainID, providerName, "batch").Add(float64(len(requests)))
-	metrics.RPCLatency.WithLabelValues(p.chainID, providerName, "batch").Observe(duration)
+	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, "batch").Add(float64(len(requests)))
+	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, "batch").Observe(duration)
 
 	if err != nil {
-		metrics.RPCErrorsTotal.WithLabelValues(p.chainID, providerName, "batch_error").Inc()
+		metrics.RPCErrorsTotal.WithLabelValues(p.chainName, providerName, "batch_error").Inc()
 	}
 
 	return result, err

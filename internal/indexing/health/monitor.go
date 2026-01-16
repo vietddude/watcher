@@ -19,6 +19,7 @@ type BlockHeightFetcher interface {
 // Monitor aggregates health status from various system components.
 type Monitor struct {
 	chains        []string
+	chainNames    map[string]string // ID -> Name map
 	cursorMgr     cursor.Manager
 	missingRepo   storage.MissingBlockRepository
 	failedRepo    storage.FailedBlockRepository
@@ -31,15 +32,21 @@ type Monitor struct {
 
 // NewMonitor creates a new health monitor.
 func NewMonitor(
-	chains []string,
+	chainNames map[string]string,
 	cursorMgr cursor.Manager,
 	missingRepo storage.MissingBlockRepository,
 	failedRepo storage.FailedBlockRepository,
 	budgetTracker rpc.BudgetTracker,
 	heightFetcher BlockHeightFetcher,
 ) *Monitor {
+	chains := make([]string, 0, len(chainNames))
+	for id := range chainNames {
+		chains = append(chains, id)
+	}
+
 	return &Monitor{
 		chains:        chains,
+		chainNames:    chainNames,
 		cursorMgr:     cursorMgr,
 		missingRepo:   missingRepo,
 		failedRepo:    failedRepo,
@@ -62,6 +69,7 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 	report := make(map[string]ChainHealth)
 
 	for _, chainID := range m.chains {
+		chainName := m.chainNames[chainID]
 		health := ChainHealth{
 			ChainID: chainID,
 			Status:  StatusHealthy,
@@ -79,28 +87,28 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 			}
 			health.BlockLag = uint64(lag)
 			// Record metric
-			metrics.CurrentBlockLag.WithLabelValues(chainID).Set(float64(lag))
-			metrics.ChainLatestBlock.WithLabelValues(chainID).Set(float64(latest))
-			metrics.IndexerLatestBlock.WithLabelValues(chainID).Set(float64(latest - uint64(lag)))
+			metrics.CurrentBlockLag.WithLabelValues(chainName).Set(float64(lag))
+			metrics.ChainLatestBlock.WithLabelValues(chainName).Set(float64(latest))
+			metrics.IndexerLatestBlock.WithLabelValues(chainName).Set(float64(latest - uint64(lag)))
 		}
 
 		// 2. Missing Blocks
 		count, err := m.missingRepo.Count(ctx, chainID)
 		if err == nil {
 			health.MissingBlocks = count
-			metrics.MissingBlocksCount.WithLabelValues(chainID).Set(float64(count))
+			metrics.MissingBlocksCount.WithLabelValues(chainName).Set(float64(count))
 		}
 
 		// 3. Failed Blocks
 		failedCount, err := m.failedRepo.Count(ctx, chainID)
 		if err == nil {
 			health.FailedBlocks = failedCount
-			metrics.FailedBlocksCount.WithLabelValues(chainID).Set(float64(failedCount))
+			metrics.FailedBlocksCount.WithLabelValues(chainName).Set(float64(failedCount))
 		}
 
 		// 4. RPC Quota Usage
 		quotaPercent := m.budgetTracker.GetUsagePercent()
-		metrics.RPCQuotaUsedPercent.WithLabelValues(chainID).Set(quotaPercent)
+		metrics.RPCQuotaUsedPercent.WithLabelValues(chainName).Set(quotaPercent)
 
 		// Evaluate Status
 		if health.BlockLag > 100 || health.MissingBlocks > 10 || health.FailedBlocks > 50 {
@@ -115,4 +123,22 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 	m.lastCheck = time.Now()
 	m.lastReport = report
 	return report
+}
+
+// Start begins the background health check loop to ensure metrics are updated periodically.
+func (m *Monitor) Start(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	// Run once immediately
+	m.CheckHealth(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.CheckHealth(ctx)
+		}
+	}
 }

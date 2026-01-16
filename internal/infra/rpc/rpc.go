@@ -213,6 +213,6 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 }
 
 // NewCoordinatedProvider creates a provider that uses coordination logic.
-func NewCoordinatedProvider(chainID string, coordinator *Coordinator) *CoordinatedProvider {
-	return budget.NewCoordinatedProvider(chainID, coordinator)
+func NewCoordinatedProvider(chainID, chainName string, coordinator *Coordinator) *CoordinatedProvider {
+	return budget.NewCoordinatedProvider(chainID, chainName, coordinator)
 }

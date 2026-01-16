@@ -18,7 +18,7 @@ scrape_configs:
   # Watcher application metrics
   - job_name: 'watcher'
     static_configs:
-      # Use host.docker.internal for Mac/Windows Docker Desktop
-      - targets: ['host.docker.internal:8080']
+      # Use localhost since using network_mode: host
+      - targets: ['localhost:8080']
     metrics_path: /metrics
     scrape_interval: 5s

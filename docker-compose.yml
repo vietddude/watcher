@@ -45,10 +45,7 @@ services:
     image: prom/prometheus:v2.48.0
     container_name: watcher-prometheus
     restart: unless-stopped
-    ports:
-      - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
@@ -68,8 +65,7 @@ services:
     image: grafana/grafana:10.2.0
     container_name: watcher-grafana
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    network_mode: host
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin

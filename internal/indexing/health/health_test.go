@@ -3,9 +3,11 @@ package health
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -87,17 +89,33 @@ func (s *stubFailedRepo) GetAll(ctx context.Context, c string) ([]*domain.Failed
 }
 func (s *stubFailedRepo) Delete(ctx context.Context, id string) error { return nil }
 
+// Stub Budget Tracker
+type stubBudgetTracker struct{}
+
+func (s *stubBudgetTracker) RecordCall(chainID, providerName, method string) {}
+func (s *stubBudgetTracker) GetUsage(chainID string) budget.UsageStats {
+	return budget.UsageStats{}
+}
+func (s *stubBudgetTracker) GetProviderUsage(chainID, providerName string) budget.UsageStats {
+	return budget.UsageStats{}
+}
+func (s *stubBudgetTracker) CanMakeCall(chainID string) bool                  { return true }
+func (s *stubBudgetTracker) CanUseProvider(chainID, providerName string) bool { return true }
+func (s *stubBudgetTracker) GetThrottleDelay(chainID string) time.Duration    { return 0 }
+func (s *stubBudgetTracker) GetUsagePercent() float64                         { return 0 }
+func (s *stubBudgetTracker) Reset()                                           {}
+
 // =============================================================================
 // Tests
 // =============================================================================
 
 func TestMonitor_Healthy(t *testing.T) {
 	monitor := NewMonitor(
-		[]string{"ethereum"},
+		map[string]string{"ethereum": "ETH"},
 		&stubCursorMgr{lag: 5},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
-		nil,
+		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
 	)
 
@@ -111,11 +129,11 @@ func TestMonitor_Healthy(t *testing.T) {
 
 func TestMonitor_Degraded(t *testing.T) {
 	monitor := NewMonitor(
-		[]string{"ethereum"},
+		map[string]string{"ethereum": "ETH"},
 		&stubCursorMgr{lag: 50},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
-		nil,
+		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
 	)
 
@@ -129,11 +147,11 @@ func TestMonitor_Degraded(t *testing.T) {
 
 func TestMonitor_Critical(t *testing.T) {
 	monitor := NewMonitor(
-		[]string{"ethereum"},
+		map[string]string{"ethereum": "ETH"},
 		&stubCursorMgr{lag: 200},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
-		nil,
+		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
 	)
 
