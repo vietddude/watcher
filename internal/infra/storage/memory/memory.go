@@ -208,7 +208,7 @@ func (r *CursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, e
 	if c, ok := r.store.cursors[chainID]; ok {
 		// Return copy
 		copy := *c
-		copy.Metadata = make(map[string]interface{}) // Deep copy metadata if needed
+		copy.Metadata = make(map[string]any) // Deep copy metadata if needed
 		return &copy, nil
 	}
 	return nil, storage.ErrCursorNotFound
