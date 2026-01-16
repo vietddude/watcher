@@ -160,7 +160,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 
 	// Record metrics
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
-	metrics.TransactionsProcessed.WithLabelValues(p.cfg.ChainName).Add(float64(len(txs)))
+
 	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
 	metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum)) // Use processed block as proxy for latest if health check fails
 

@@ -15,15 +15,6 @@ var (
 		[]string{"chain"},
 	)
 
-	// TransactionsProcessed tracks total transactions processed per chain
-	TransactionsProcessed = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_transactions_processed_total",
-			Help: "Total number of transactions processed",
-		},
-		[]string{"chain"},
-	)
-
 	// RPCCallsTotal tracks RPC calls per chain and provider
 	RPCCallsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -52,69 +43,6 @@ var (
 		[]string{"chain", "provider", "method"},
 	)
 
-	// RPCQuotaUsedPercent tracks quota usage percentage
-	RPCQuotaUsedPercent = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "watcher_rpc_quota_used_percent",
-			Help: "RPC quota usage percentage",
-		},
-		[]string{"chain"},
-	)
-
-	// FailedBlocksCount tracks current failed blocks in queue
-	FailedBlocksCount = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "watcher_failed_blocks_count",
-			Help: "Number of failed blocks in queue",
-		},
-		[]string{"chain"},
-	)
-
-	// MissingBlocksCount tracks current missing blocks in queue
-	MissingBlocksCount = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "watcher_missing_blocks_count",
-			Help: "Number of missing blocks in queue",
-		},
-		[]string{"chain"},
-	)
-
-	// ReorgsDetected tracks total reorgs detected
-	ReorgsDetected = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_reorgs_detected_total",
-			Help: "Total number of reorgs detected",
-		},
-		[]string{"chain"},
-	)
-
-	// EventsEmitted tracks total events emitted
-	EventsEmitted = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_events_emitted_total",
-			Help: "Total number of events emitted",
-		},
-		[]string{"chain", "event_type"},
-	)
-
-	// RescanRangesProcessed tracks rescan ranges processed
-	RescanRangesProcessed = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_rescan_ranges_processed_total",
-			Help: "Total number of rescan ranges processed",
-		},
-		[]string{"chain"},
-	)
-
-	// RescanBlocksProcessed tracks blocks processed via rescan
-	RescanBlocksProcessed = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_rescan_blocks_processed_total",
-			Help: "Total number of blocks processed via rescan",
-		},
-		[]string{"chain"},
-	)
-
 	// ChainLatestBlock tracks the latest block height of the chain
 	ChainLatestBlock = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -131,23 +59,5 @@ var (
 			Help: "Latest block height indexed by the watcher",
 		},
 		[]string{"chain"},
-	)
-
-	// RPCFailoverTotal tracks RPC provider failover events
-	RPCFailoverTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_rpc_failover_total",
-			Help: "Total number of RPC provider failovers",
-		},
-		[]string{"chain", "from_provider", "to_provider", "reason"},
-	)
-
-	// RPCRetryTotal tracks RPC call retries
-	RPCRetryTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "watcher_rpc_retry_total",
-			Help: "Total number of RPC call retries",
-		},
-		[]string{"chain", "provider"},
 	)
 )

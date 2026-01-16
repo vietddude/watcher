@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/cursor"
-	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -69,7 +68,7 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 	report := make(map[string]ChainHealth)
 
 	for _, chainID := range m.chains {
-		chainName := m.chainNames[chainID]
+
 		health := ChainHealth{
 			ChainID: chainID,
 			Status:  StatusHealthy,
@@ -81,19 +80,15 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 		count, err := m.missingRepo.Count(ctx, chainID)
 		if err == nil {
 			health.MissingBlocks = count
-			metrics.MissingBlocksCount.WithLabelValues(chainName).Set(float64(count))
 		}
 
 		// 3. Failed Blocks
 		failedCount, err := m.failedRepo.Count(ctx, chainID)
 		if err == nil {
 			health.FailedBlocks = failedCount
-			metrics.FailedBlocksCount.WithLabelValues(chainName).Set(float64(failedCount))
 		}
 
 		// 4. RPC Quota Usage
-		quotaPercent := m.budgetTracker.GetUsagePercent()
-		metrics.RPCQuotaUsedPercent.WithLabelValues(chainName).Set(quotaPercent)
 
 		// Evaluate Status
 		if health.BlockLag > 100 || health.MissingBlocks > 10 || health.FailedBlocks > 50 {
