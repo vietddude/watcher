@@ -17,10 +17,9 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/rescan"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/chain/evm"
+	"github.com/vietddude/watcher/internal/infra/chain/sui"
 	redisclient "github.com/vietddude/watcher/internal/infra/redis"
 	"github.com/vietddude/watcher/internal/infra/rpc"
-	"github.com/vietddude/watcher/internal/infra/rpc/budget"
-	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/storage"
 	"github.com/vietddude/watcher/internal/infra/storage/memory"
 	"github.com/vietddude/watcher/internal/infra/storage/postgres"
@@ -46,7 +45,7 @@ type Config struct {
 	Port                int
 	Chains              []ChainConfig
 	Backfill            backfill.ProcessorConfig
-	Budget              budget.Config
+	Budget              rpc.BudgetConfig
 	Reorg               reorg.Config
 	Redis               redisclient.Config
 	Database            postgres.Config // Add database config
@@ -55,11 +54,12 @@ type Config struct {
 
 // ChainConfig holds configuration for a specific chain.
 type ChainConfig struct {
-	ChainID        string
-	InternalCode   string // e.g., "ETHEREUM_MAINNET"
-	FinalityBlocks uint64
-	ScanInterval   time.Duration
-	RescanRanges   bool // Enable rescan worker
+	ChainID        string        `yaml:"id" mapstructure:"id"`
+	Type           string        `yaml:"type" mapstructure:"type"` // "evm" or "sui"
+	InternalCode   string        `yaml:"internal_code" mapstructure:"internal_code"`
+	FinalityBlocks uint64        `yaml:"finality_blocks" mapstructure:"finality_blocks"`
+	ScanInterval   time.Duration `yaml:"scan_interval" mapstructure:"scan_interval"`
+	RescanRanges   bool          `yaml:"rescan_ranges" mapstructure:"rescan_ranges"` // Enable rescan worker
 	Providers      []ProviderConfig
 }
 
@@ -71,6 +71,7 @@ type ProviderConfig struct {
 
 // NewWatcher creates a new Watcher instance with all dependencies initialized.
 func NewWatcher(cfg Config) (*Watcher, error) {
+
 	// 1. Initialize Storage
 	var blockRepo storage.BlockRepository
 	var txRepo storage.TransactionRepository
@@ -150,7 +151,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	if quota == 0 {
 		quota = 10000
 	}
-	budgetTracker := budget.NewBudgetTracker(quota, allocation)
+	budgetTracker := rpc.NewBudgetTracker(quota, allocation)
 
 	fetcher := &MultiChainFetcher{adapters: make(map[string]chain.Adapter)}
 	indexers := make(map[string]indexer.Indexer)
@@ -164,19 +165,38 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		router := rpc.NewRouter(budgetTracker)
 
 		for _, p := range chainCfg.Providers {
-			rpcProvider := provider.NewHTTPProvider(
-				p.Name,
-				p.URL,
-				10*time.Second,
-			)
-			router.AddProvider(chainID, rpcProvider)
+			// Check if this is a sui chain to use GRPC provider
+			if chainCfg.Type == "sui" {
+				// Use GRPC Provider
+				grpcProvider, err := rpc.NewGRPCProvider(context.Background(), p.Name, p.URL)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create grpc provider: %w", err)
+				}
+				router.AddProvider(chainID, grpcProvider)
+			} else {
+				// Use HTTP Provider (EVM default)
+				rpcProvider := rpc.NewHTTPProvider(
+					p.Name,
+					p.URL,
+					10*time.Second,
+				)
+				router.AddProvider(chainID, rpcProvider)
+			}
 		}
 
 		coordinator := rpc.NewCoordinator(router, budgetTracker)
-		coordinatedProvider := budget.NewCoordinatedProvider(chainID, coordinator)
+		coordinatedProvider := rpc.NewCoordinatedProvider(chainID, coordinator)
 
 		// Use EVM adapter by default with CoordinatedProvider
-		adapter := evm.NewEVMAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
+		var adapter chain.Adapter
+		if chainCfg.Type == "sui" {
+			// Use the coordinated provider (which wraps generic providers)
+			// The Sui Client now accepts a rpc.Provider
+			client := sui.NewClient(coordinatedProvider)
+			adapter = sui.NewAdapter(chainID, client)
+		} else {
+			adapter = evm.NewEVMAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
+		}
 		fetcher.adapters[chainID] = adapter
 
 		// 4. Initialize Components
@@ -399,3 +419,10 @@ func (f *SimpleFilter) AddBatch(addrs []string) error {
 func (f *SimpleFilter) Remove(addr string) error          { delete(f.addresses, addr); return nil }
 func (f *SimpleFilter) Size() int                         { return len(f.addresses) }
 func (f *SimpleFilter) Rebuild(ctx context.Context) error { return nil }
+func (f *SimpleFilter) Addresses() []string {
+	addrs := make([]string, 0, len(f.addresses))
+	for a := range f.addresses {
+		addrs = append(addrs, a)
+	}
+	return addrs
+}

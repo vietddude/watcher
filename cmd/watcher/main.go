@@ -79,6 +79,7 @@ func main() {
 		}
 		controlCfg.Chains[i] = control.ChainConfig{
 			ChainID:        c.ID,
+			Type:           c.Type,
 			InternalCode:   c.InternalCode,
 			FinalityBlocks: c.FinalityBlocks,
 			ScanInterval:   c.ScanInterval,

@@ -45,6 +45,7 @@
 package rpc
 
 import (
+	"context"
 	"time"
 
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
@@ -61,6 +62,9 @@ type Provider = provider.Provider
 
 // HTTPProvider implements Provider for JSON-RPC over HTTP.
 type HTTPProvider = provider.HTTPProvider
+
+// GRPCProvider implements Provider for gRPC.
+type GRPCProvider = provider.GRPCProvider
 
 // ProviderMonitor tracks provider health and rate limiting.
 type ProviderMonitor = provider.ProviderMonitor
@@ -94,6 +98,11 @@ const (
 // NewHTTPProvider creates a new HTTP-based RPC provider.
 func NewHTTPProvider(name, endpoint string, timeout time.Duration) *HTTPProvider {
 	return provider.NewHTTPProvider(name, endpoint, timeout)
+}
+
+// NewGRPCProvider creates a new gRPC provider.
+func NewGRPCProvider(ctx context.Context, name, endpoint string) (*GRPCProvider, error) {
+	return provider.NewGRPCProvider(ctx, name, endpoint)
 }
 
 // NewProviderPool creates a new provider pool.

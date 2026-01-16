@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vietddude/watcher/internal/infra/rpc/budget"
+	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -44,7 +44,7 @@ type Processor struct {
 	config      ProcessorConfig
 	missingRepo storage.MissingBlockRepository
 	fetcher     BlockFetcher
-	budget      budget.BudgetTracker
+	budget      rpc.BudgetTracker
 
 	mu            sync.RWMutex
 	lastProcessed map[string]time.Time
@@ -60,7 +60,7 @@ type ProcessorStats struct {
 }
 
 // SetBudgetTracker sets the budget tracker for quota checking.
-func (p *Processor) SetBudgetTracker(b budget.BudgetTracker) {
+func (p *Processor) SetBudgetTracker(b rpc.BudgetTracker) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.budget = b

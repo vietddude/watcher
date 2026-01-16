@@ -9,6 +9,7 @@ import (
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
+	"github.com/vietddude/watcher/internal/infra/chain"
 )
 
 // Pipeline implements the Indexer interface
@@ -124,14 +125,34 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		return nil
 	}
 
-	// 4. Fetch Transactions for block
-	txs, err := p.cfg.ChainAdapter.GetTransactions(ctx, block)
-	if err != nil {
-		return p.handleError(ctx, targetBlockNum, fmt.Errorf("fetch txs failed: %w", err))
+	// 4. Optimization: Check PreFilter if supported
+	var txs []*domain.Transaction
+	var skipFetch bool
+
+	if preFilter, ok := p.cfg.ChainAdapter.(chain.PreFilterAdapter); ok {
+		addrs := p.cfg.Filter.Addresses()
+		if len(addrs) > 0 {
+			relevant, err := preFilter.HasRelevantTransactions(ctx, block, addrs)
+			if err != nil {
+				slog.Warn("PreFilter check failed", "block", targetBlockNum, "error", err)
+			} else if !relevant {
+				slog.Debug("Skipping block based on pre-filter", "block", targetBlockNum)
+				skipFetch = true
+			}
+		}
+	}
+
+	if !skipFetch {
+		// Fetch Transactions for block
+		var err error
+		txs, err = p.cfg.ChainAdapter.GetTransactions(ctx, block)
+		if err != nil {
+			return p.handleError(ctx, targetBlockNum, fmt.Errorf("fetch txs failed: %w", err))
+		}
 	}
 
 	// Log block processing
-	slog.Info("Processing block", "block", targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
+	slog.Info("Processing block", "chain", p.cfg.ChainID, "block", targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
 
 	// Record metrics
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainID).Inc()

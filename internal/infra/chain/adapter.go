@@ -40,3 +40,9 @@ type Adapter interface {
 	// SupportsBloomFilter indicates if chain supports bloom filter optimization
 	SupportsBloomFilter() bool
 }
+
+// PreFilterAdapter is an optional interface for adapters that can check for relevance before fetching transactions
+type PreFilterAdapter interface {
+	// HasRelevantTransactions checks if the block might contain transactions of interest
+	HasRelevantTransactions(ctx context.Context, block *domain.Block, addresses []string) (bool, error)
+}

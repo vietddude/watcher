@@ -70,7 +70,7 @@ func (m *mockCursorMgr) Rollback(ctx context.Context, c string, b uint64, h stri
 func (m *mockCursorMgr) Pause(ctx context.Context, c string, r string) error              { return nil }
 func (m *mockCursorMgr) Resume(ctx context.Context, c string) error                       { return nil }
 func (m *mockCursorMgr) GetLag(ctx context.Context, c string, l uint64) (int64, error)    { return 0, nil }
-func (m *mockCursorMgr) SetMetadata(ctx context.Context, c, k string, v interface{}) error {
+func (m *mockCursorMgr) SetMetadata(ctx context.Context, c, k string, v any) error {
 	return nil
 }
 func (m *mockCursorMgr) GetMetrics(c string) cursor.Metrics                        { return cursor.Metrics{} }
@@ -92,6 +92,9 @@ func (m *mockFilter) AddBatch(addrs []string) error     { return nil }
 func (m *mockFilter) Remove(addr string) error          { return nil }
 func (m *mockFilter) Size() int                         { return 0 }
 func (m *mockFilter) Rebuild(ctx context.Context) error { return nil }
+func (m *mockFilter) Addresses() []string {
+	return []string{"addr1"}
+}
 
 type mockEmitter struct {
 	emitted []*domain.Event

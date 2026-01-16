@@ -123,4 +123,40 @@ var (
 		},
 		[]string{"chain"},
 	)
+
+	// ChainLatestBlock tracks the latest block height of the chain
+	ChainLatestBlock = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_chain_latest_block",
+			Help: "Latest block height of the chain",
+		},
+		[]string{"chain"},
+	)
+
+	// IndexerLatestBlock tracks the latest block indexed by the watcher
+	IndexerLatestBlock = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_indexer_latest_block",
+			Help: "Latest block height indexed by the watcher",
+		},
+		[]string{"chain"},
+	)
+
+	// RPCFailoverTotal tracks RPC provider failover events
+	RPCFailoverTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_rpc_failover_total",
+			Help: "Total number of RPC provider failovers",
+		},
+		[]string{"chain", "from_provider", "to_provider", "reason"},
+	)
+
+	// RPCRetryTotal tracks RPC call retries
+	RPCRetryTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_rpc_retry_total",
+			Help: "Total number of RPC call retries",
+		},
+		[]string{"chain", "provider"},
+	)
 )

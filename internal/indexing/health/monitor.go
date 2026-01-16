@@ -7,7 +7,7 @@ import (
 
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
-	"github.com/vietddude/watcher/internal/infra/rpc/budget"
+	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -22,7 +22,7 @@ type Monitor struct {
 	cursorMgr     cursor.Manager
 	missingRepo   storage.MissingBlockRepository
 	failedRepo    storage.FailedBlockRepository
-	budgetTracker budget.BudgetTracker
+	budgetTracker rpc.BudgetTracker
 	heightFetcher BlockHeightFetcher
 	lastCheck     time.Time
 	lastReport    map[string]ChainHealth
@@ -35,7 +35,7 @@ func NewMonitor(
 	cursorMgr cursor.Manager,
 	missingRepo storage.MissingBlockRepository,
 	failedRepo storage.FailedBlockRepository,
-	budgetTracker budget.BudgetTracker,
+	budgetTracker rpc.BudgetTracker,
 	heightFetcher BlockHeightFetcher,
 ) *Monitor {
 	return &Monitor{
@@ -80,6 +80,8 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 			health.BlockLag = uint64(lag)
 			// Record metric
 			metrics.CurrentBlockLag.WithLabelValues(chainID).Set(float64(lag))
+			metrics.ChainLatestBlock.WithLabelValues(chainID).Set(float64(latest))
+			metrics.IndexerLatestBlock.WithLabelValues(chainID).Set(float64(latest - uint64(lag)))
 		}
 
 		// 2. Missing Blocks

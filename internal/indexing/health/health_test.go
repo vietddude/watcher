@@ -41,7 +41,7 @@ func (s *stubCursorMgr) SetState(ctx context.Context, c string, st cursor.State,
 func (s *stubCursorMgr) Rollback(ctx context.Context, c string, b uint64, h string) error { return nil }
 func (s *stubCursorMgr) Pause(ctx context.Context, c string, r string) error              { return nil }
 func (s *stubCursorMgr) Resume(ctx context.Context, c string) error                       { return nil }
-func (s *stubCursorMgr) SetMetadata(ctx context.Context, c, k string, v interface{}) error {
+func (s *stubCursorMgr) SetMetadata(ctx context.Context, c, k string, v any) error {
 	return nil
 }
 func (s *stubCursorMgr) GetMetrics(c string) cursor.Metrics { return cursor.Metrics{} }

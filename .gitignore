@@ -22,3 +22,6 @@ config.local.yaml
 
 # Logs
 *.log
+
+# Sui Protos
+internal/infra/chain/sui/proto/

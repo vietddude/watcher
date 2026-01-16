@@ -21,4 +21,7 @@ type Filter interface {
 
 	// Rebuild rebuilds the filter (for bloom filters)
 	Rebuild(ctx context.Context) error
+
+	// Addresses returns the list of all tracked addresses
+	Addresses() []string
 }
