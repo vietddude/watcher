@@ -29,7 +29,7 @@ func NewBitcoinAdapter(chainID string, provider rpc.Provider, finalityBlocks uin
 }
 
 func (a *BitcoinAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
-	result, err := a.rpcProvider.Call(ctx, "getblockcount", []interface{}{})
+	result, err := a.rpcProvider.Call(ctx, "getblockcount", []any{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block count: %w", err)
 	}
@@ -44,7 +44,7 @@ func (a *BitcoinAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 
 func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
 	// First get block hash
-	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []interface{}{blockNumber})
+	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []any{blockNumber})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block hash: %w", err)
 	}
@@ -55,12 +55,12 @@ func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*dom
 	}
 
 	// Then get block details with verbosity 1 (includes tx hashes)
-	result, err := a.rpcProvider.Call(ctx, "getblock", []interface{}{blockHash, 1})
+	result, err := a.rpcProvider.Call(ctx, "getblock", []any{blockHash, 1})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block: %w", err)
 	}
 
-	blockData, ok := result.(map[string]interface{})
+	blockData, ok := result.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid block data format")
 	}
@@ -69,12 +69,12 @@ func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*dom
 }
 
 func (a *BitcoinAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
-	result, err := a.rpcProvider.Call(ctx, "getblock", []interface{}{blockHash, 1})
+	result, err := a.rpcProvider.Call(ctx, "getblock", []any{blockHash, 1})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash: %w", err)
 	}
 
-	blockData, ok := result.(map[string]interface{})
+	blockData, ok := result.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid block data format")
 	}
@@ -88,24 +88,24 @@ func (a *BitcoinAdapter) GetTransactions(ctx context.Context, block *domain.Bloc
 	}
 
 	// Get block with full transaction details (verbosity 2)
-	result, err := a.rpcProvider.Call(ctx, "getblock", []interface{}{block.Hash, 2})
+	result, err := a.rpcProvider.Call(ctx, "getblock", []any{block.Hash, 2})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block transactions: %w", err)
 	}
 
-	blockData, ok := result.(map[string]interface{})
+	blockData, ok := result.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid block data format")
 	}
 
-	txsRaw, ok := blockData["tx"].([]interface{})
+	txsRaw, ok := blockData["tx"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid transactions format")
 	}
 
 	transactions := make([]*domain.Transaction, 0, len(txsRaw))
 	for i, txRaw := range txsRaw {
-		txData, ok := txRaw.(map[string]interface{})
+		txData, ok := txRaw.(map[string]any)
 		if !ok {
 			a.log.Warn("skipping invalid transaction", "index", i)
 			continue
@@ -124,7 +124,8 @@ func (a *BitcoinAdapter) GetTransactions(ctx context.Context, block *domain.Bloc
 }
 
 func (a *BitcoinAdapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error) {
-	// Bitcoin uses UTXO model - filter by addresses in inputs/outputs
+	// Outputs-only approach: filter by "To" addresses (recipients)
+	// No bloom filter needed - Bitcoin gets full data in 1 API call
 	addressMap := make(map[string]bool)
 	for _, addr := range addresses {
 		addressMap[addr] = true
@@ -132,7 +133,7 @@ func (a *BitcoinAdapter) FilterTransactions(ctx context.Context, txs []*domain.T
 
 	filtered := make([]*domain.Transaction, 0)
 	for _, tx := range txs {
-		if addressMap[tx.From] || addressMap[tx.To] {
+		if addressMap[tx.To] {
 			filtered = append(filtered, tx)
 		}
 	}
@@ -141,7 +142,7 @@ func (a *BitcoinAdapter) FilterTransactions(ctx context.Context, txs []*domain.T
 }
 
 func (a *BitcoinAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
-	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []interface{}{blockNumber})
+	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []any{blockNumber})
 	if err != nil {
 		return false, err
 	}
@@ -168,7 +169,7 @@ func (a *BitcoinAdapter) SupportsBloomFilter() bool {
 
 // Helper methods
 
-func (a *BitcoinAdapter) parseBlock(blockData map[string]interface{}) (*domain.Block, error) {
+func (a *BitcoinAdapter) parseBlock(blockData map[string]any) (*domain.Block, error) {
 	height, ok := blockData["height"].(float64)
 	if !ok {
 		return nil, fmt.Errorf("invalid block height")
@@ -190,7 +191,7 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]interface{}) (*domain.B
 	}
 
 	txCount := 0
-	if txs, ok := blockData["tx"].([]interface{}); ok {
+	if txs, ok := blockData["tx"].([]any); ok {
 		txCount = len(txs)
 	} else if nTx, ok := blockData["nTx"].(float64); ok {
 		txCount = int(nTx)
@@ -204,7 +205,7 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]interface{}) (*domain.B
 		Timestamp:  time.Unix(int64(timestamp), 0),
 		TxCount:    txCount,
 		Status:     domain.BlockStatusPending,
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"difficulty": blockData["difficulty"],
 			"size":       blockData["size"],
 			"weight":     blockData["weight"],
@@ -212,85 +213,84 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]interface{}) (*domain.B
 	}, nil
 }
 
-func (a *BitcoinAdapter) parseUTXOTransaction(txData map[string]interface{}, block *domain.Block, txIndex int) ([]*domain.Transaction, error) {
+func (a *BitcoinAdapter) parseUTXOTransaction(txData map[string]any, block *domain.Block, txIndex int) ([]*domain.Transaction, error) {
 	txHash, ok := txData["txid"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid tx hash")
 	}
 
-	// Bitcoin transactions can have multiple inputs and outputs
-	// We create one domain.Transaction per input->output pair
+	// Bitcoin transactions have multiple outputs - create one domain.Transaction per output
+	// We focus on outputs only (1 RPC call) - no input address resolution needed
 	transactions := make([]*domain.Transaction, 0)
 
-	// Parse inputs (vin)
-	inputs := []string{}
-	if vin, ok := txData["vin"].([]interface{}); ok {
-		for _, vinRaw := range vin {
-			vinData, ok := vinRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			// Extract address from scriptPubKey
-			if addresses, ok := vinData["prevout"].(map[string]interface{})["scriptPubKey"].(map[string]interface{})["addresses"].([]interface{}); ok {
-				if len(addresses) > 0 {
-					if addr, ok := addresses[0].(string); ok {
-						inputs = append(inputs, addr)
-					}
-				}
-			}
-		}
+	// Parse outputs (vout) - these are the "to" addresses
+	vout, ok := txData["vout"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("invalid vout format")
 	}
 
-	// Parse outputs (vout)
-	if vout, ok := txData["vout"].([]interface{}); ok {
-		for _, voutRaw := range vout {
-			voutData, ok := voutRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			value := "0"
-			if val, ok := voutData["value"].(float64); ok {
-				// Convert BTC to satoshis
-				value = fmt.Sprintf("%.0f", val*100000000)
-			}
-
-			// Extract recipient address
-			toAddr := ""
-			if scriptPubKey, ok := voutData["scriptPubKey"].(map[string]interface{}); ok {
-				if addresses, ok := scriptPubKey["addresses"].([]interface{}); ok && len(addresses) > 0 {
-					if addr, ok := addresses[0].(string); ok {
-						toAddr = addr
-					}
-				}
-			}
-
-			// Create transaction for each input-output pair
-			fromAddr := ""
-			if len(inputs) > 0 {
-				fromAddr = inputs[0] // Simplified: use first input
-			}
-
-			rawData, _ := json.Marshal(txData)
-
-			tx := &domain.Transaction{
-				ChainID:     a.chainID,
-				BlockNumber: block.Number,
-				BlockHash:   block.Hash,
-				TxHash:      txHash,
-				TxIndex:     txIndex,
-				From:        fromAddr,
-				To:          toAddr,
-				Value:       value,
-				Status:      domain.TxStatusSuccess,
-				Timestamp:   block.Timestamp,
-				RawData:     rawData,
-			}
-
-			transactions = append(transactions, tx)
+	for _, voutRaw := range vout {
+		voutData, ok := voutRaw.(map[string]any)
+		if !ok {
+			continue
 		}
+
+		// Extract value (in BTC, convert to satoshis)
+		value := "0"
+		if val, ok := voutData["value"].(float64); ok {
+			// Convert BTC to satoshis (1 BTC = 100,000,000 satoshis)
+			value = fmt.Sprintf("%.0f", val*100000000)
+		}
+
+		// Extract recipient address from scriptPubKey
+		toAddr := a.extractOutputAddress(voutData)
+		if toAddr == "" {
+			// Skip outputs without addresses (OP_RETURN, etc.)
+			continue
+		}
+
+		rawData, _ := json.Marshal(txData)
+
+		tx := &domain.Transaction{
+			ChainID:     a.chainID,
+			BlockNumber: block.Number,
+			BlockHash:   block.Hash,
+			TxHash:      txHash,
+			TxIndex:     txIndex,
+			From:        "", // Outputs-only approach: skip input resolution
+			To:          toAddr,
+			Value:       value,
+			Status:      domain.TxStatusSuccess,
+			Timestamp:   block.Timestamp,
+			RawData:     rawData,
+		}
+
+		transactions = append(transactions, tx)
 	}
 
 	return transactions, nil
+}
+
+// extractOutputAddress extracts the address from a vout scriptPubKey.
+// Handles both legacy (addresses array) and modern (address field) formats.
+func (a *BitcoinAdapter) extractOutputAddress(voutData map[string]any) string {
+	scriptPubKey, ok := voutData["scriptPubKey"].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	// Method 1: Modern format - single "address" field (SegWit, Taproot)
+	if addr, ok := scriptPubKey["address"].(string); ok {
+		return addr
+	}
+
+	// Method 2: Legacy format - "addresses" array
+	if addresses, ok := scriptPubKey["addresses"].([]any); ok && len(addresses) > 0 {
+		if addr, ok := addresses[0].(string); ok {
+			return addr
+		}
+	}
+
+	// No address found (OP_RETURN, non-standard scripts)
+	return ""
 }

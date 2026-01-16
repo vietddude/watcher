@@ -194,7 +194,7 @@ func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transacti
 
 // Helper methods
 
-func (a *EVMAdapter) parseBlock(blockData map[string]interface{}) (*domain.Block, error) {
+func (a *EVMAdapter) parseBlock(blockData map[string]any) (*domain.Block, error) {
 	numberStr, ok := blockData["number"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid block number format")
@@ -224,7 +224,7 @@ func (a *EVMAdapter) parseBlock(blockData map[string]interface{}) (*domain.Block
 	}
 
 	txCount := 0
-	if txs, ok := blockData["transactions"].([]interface{}); ok {
+	if txs, ok := blockData["transactions"].([]any); ok {
 		txCount = len(txs)
 	}
 
@@ -244,7 +244,7 @@ func (a *EVMAdapter) parseBlock(blockData map[string]interface{}) (*domain.Block
 	}, nil
 }
 
-func (a *EVMAdapter) parseTransaction(txData map[string]interface{}, block *domain.Block) (*domain.Transaction, error) {
+func (a *EVMAdapter) parseTransaction(txData map[string]any, block *domain.Block) (*domain.Transaction, error) {
 	txHash, ok := txData["hash"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid tx hash")

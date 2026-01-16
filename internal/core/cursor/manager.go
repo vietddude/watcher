@@ -52,7 +52,7 @@ type Manager interface {
 	GetLag(ctx context.Context, chainID string, latestBlock uint64) (int64, error)
 
 	// SetMetadata updates cursor metadata.
-	SetMetadata(ctx context.Context, chainID string, key string, value interface{}) error
+	SetMetadata(ctx context.Context, chainID string, key string, value any) error
 
 	// GetMetrics returns performance metrics for a chain.
 	GetMetrics(chainID string) Metrics
@@ -81,7 +81,7 @@ func (m *DefaultManager) Initialize(ctx context.Context, chainID string, startBl
 		CurrentBlock: startBlock,
 		UpdatedAt:    time.Now(),
 		State:        domain.CursorStateInit,
-		Metadata:     make(map[string]interface{}),
+		Metadata:     make(map[string]any),
 	}
 
 	if err := m.repo.Save(ctx, cursor); err != nil {
@@ -233,14 +233,14 @@ func (m *DefaultManager) GetLag(ctx context.Context, chainID string, latestBlock
 }
 
 // SetMetadata updates cursor metadata.
-func (m *DefaultManager) SetMetadata(ctx context.Context, chainID string, key string, value interface{}) error {
+func (m *DefaultManager) SetMetadata(ctx context.Context, chainID string, key string, value any) error {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
 	}
 
 	if cursor.Metadata == nil {
-		cursor.Metadata = make(map[string]interface{})
+		cursor.Metadata = make(map[string]any)
 	}
 	cursor.Metadata[key] = value
 

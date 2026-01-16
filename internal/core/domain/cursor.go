@@ -9,7 +9,7 @@ type Cursor struct {
 	CurrentBlockHash string
 	UpdatedAt        time.Time
 	State            CursorState
-	Metadata         map[string]interface{}
+	Metadata         map[string]any
 }
 
 type CursorState string
