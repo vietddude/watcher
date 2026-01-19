@@ -112,7 +112,11 @@ func (b *blockRow) toDomain() *domain.Block {
 }
 
 // GetByNumber retrieves a block by number.
-func (r *BlockRepo) GetByNumber(ctx context.Context, chainID string, blockNumber uint64) (*domain.Block, error) {
+func (r *BlockRepo) GetByNumber(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+) (*domain.Block, error) {
 	query := `
 		SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status
 		FROM blocks
@@ -132,7 +136,11 @@ func (r *BlockRepo) GetByNumber(ctx context.Context, chainID string, blockNumber
 }
 
 // GetByHash retrieves a block by hash.
-func (r *BlockRepo) GetByHash(ctx context.Context, chainID string, blockHash string) (*domain.Block, error) {
+func (r *BlockRepo) GetByHash(
+	ctx context.Context,
+	chainID string,
+	blockHash string,
+) (*domain.Block, error) {
 	query := `
 		SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status
 		FROM blocks
@@ -174,7 +182,12 @@ func (r *BlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Bloc
 }
 
 // UpdateStatus updates block status.
-func (r *BlockRepo) UpdateStatus(ctx context.Context, chainID string, blockNumber uint64, status domain.BlockStatus) error {
+func (r *BlockRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+	status domain.BlockStatus,
+) error {
 	query := `UPDATE blocks SET status = $1 WHERE chain_id = $2 AND block_number = $3`
 	_, err := r.db.ExecContext(ctx, query, string(status), chainID, blockNumber)
 	if err != nil {
@@ -184,7 +197,11 @@ func (r *BlockRepo) UpdateStatus(ctx context.Context, chainID string, blockNumbe
 }
 
 // FindGaps finds missing blocks in a range.
-func (r *BlockRepo) FindGaps(ctx context.Context, chainID string, fromBlock, toBlock uint64) ([]storage.Gap, error) {
+func (r *BlockRepo) FindGaps(
+	ctx context.Context,
+	chainID string,
+	fromBlock, toBlock uint64,
+) ([]storage.Gap, error) {
 	query := `
 		WITH numbered AS (
 			SELECT block_number, LEAD(block_number) OVER (ORDER BY block_number) as next_block
@@ -216,7 +233,11 @@ func (r *BlockRepo) FindGaps(ctx context.Context, chainID string, fromBlock, toB
 }
 
 // DeleteRange deletes blocks in a range.
-func (r *BlockRepo) DeleteRange(ctx context.Context, chainID string, fromBlock, toBlock uint64) error {
+func (r *BlockRepo) DeleteRange(
+	ctx context.Context,
+	chainID string,
+	fromBlock, toBlock uint64,
+) error {
 	query := `DELETE FROM blocks WHERE chain_id = $1 AND block_number BETWEEN $2 AND $3`
 	_, err := r.db.ExecContext(ctx, query, chainID, fromBlock, toBlock)
 	if err != nil {

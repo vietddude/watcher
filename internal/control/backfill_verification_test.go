@@ -18,7 +18,9 @@ func TestWatcher_BackfillWiring(t *testing.T) {
 				ChainID:        "test-backfill-chain",
 				FinalityBlocks: 1,
 				ScanInterval:   100 * time.Millisecond,
-				Providers:      []config.ProviderConfig{{Name: "test", URL: "http://localhost:8545"}},
+				Providers: []config.ProviderConfig{
+					{Name: "test", URL: "http://localhost:8545"},
+				},
 			},
 		},
 		Backfill: backfill.ProcessorConfig{

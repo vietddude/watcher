@@ -203,7 +203,11 @@ func NewCoordinator(router Router, b BudgetTracker) *Coordinator {
 }
 
 // NewCoordinatorWithConfig creates a coordinator with custom config.
-func NewCoordinatorWithConfig(router Router, b BudgetTracker, config CoordinatorConfig) *Coordinator {
+func NewCoordinatorWithConfig(
+	router Router,
+	b BudgetTracker,
+	config CoordinatorConfig,
+) *Coordinator {
 	return budget.NewCoordinatorWithConfig(router, b, config)
 }
 
@@ -213,6 +217,9 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 }
 
 // NewCoordinatedProvider creates a provider that uses coordination logic.
-func NewCoordinatedProvider(chainID, chainName string, coordinator *Coordinator) *CoordinatedProvider {
+func NewCoordinatedProvider(
+	chainID, chainName string,
+	coordinator *Coordinator,
+) *CoordinatedProvider {
 	return budget.NewCoordinatedProvider(chainID, chainName, coordinator)
 }

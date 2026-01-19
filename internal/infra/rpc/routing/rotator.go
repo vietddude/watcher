@@ -40,7 +40,12 @@ func NewProviderRotator(strategy RotationStrategy) *ProviderRotator {
 }
 
 // SelectProvider chooses next provider based on strategy.
-func (pr *ProviderRotator) SelectProvider(chainID string, providers []provider.Provider, _ Router, budget BudgetChecker) (provider.Provider, error) {
+func (pr *ProviderRotator) SelectProvider(
+	chainID string,
+	providers []provider.Provider,
+	_ Router,
+	budget BudgetChecker,
+) (provider.Provider, error) {
 	switch pr.strategy {
 	case RotationRoundRobin:
 		return pr.roundRobin(chainID, providers)
@@ -55,7 +60,10 @@ func (pr *ProviderRotator) SelectProvider(chainID string, providers []provider.P
 	}
 }
 
-func (pr *ProviderRotator) roundRobin(chainID string, providers []provider.Provider) (provider.Provider, error) {
+func (pr *ProviderRotator) roundRobin(
+	chainID string,
+	providers []provider.Provider,
+) (provider.Provider, error) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
@@ -70,7 +78,10 @@ func (pr *ProviderRotator) roundRobin(chainID string, providers []provider.Provi
 	return p, nil
 }
 
-func (pr *ProviderRotator) weighted(_ string, providers []provider.Provider) (provider.Provider, error) {
+func (pr *ProviderRotator) weighted(
+	_ string,
+	providers []provider.Provider,
+) (provider.Provider, error) {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
 
@@ -121,7 +132,10 @@ func (pr *ProviderRotator) weighted(_ string, providers []provider.Provider) (pr
 	return weighted[0].provider, nil
 }
 
-func (pr *ProviderRotator) adaptive(_ string, providers []provider.Provider) (provider.Provider, error) {
+func (pr *ProviderRotator) adaptive(
+	_ string,
+	providers []provider.Provider,
+) (provider.Provider, error) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
@@ -169,7 +183,11 @@ func (pr *ProviderRotator) adaptive(_ string, providers []provider.Provider) (pr
 	return selected, nil
 }
 
-func (pr *ProviderRotator) proactive(chainID string, providers []provider.Provider, _ BudgetChecker) (provider.Provider, error) {
+func (pr *ProviderRotator) proactive(
+	chainID string,
+	providers []provider.Provider,
+	_ BudgetChecker,
+) (provider.Provider, error) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
@@ -245,7 +263,10 @@ func (pr *ProviderRotator) proactive(chainID string, providers []provider.Provid
 	return selected.provider, nil
 }
 
-func (pr *ProviderRotator) calculateScore(stats provider.MonitorStats, health provider.HealthStatus) float64 {
+func (pr *ProviderRotator) calculateScore(
+	stats provider.MonitorStats,
+	health provider.HealthStatus,
+) float64 {
 	score := 100.0
 
 	usagePercent := stats.UsagePercentage

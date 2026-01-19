@@ -19,21 +19,33 @@ type MockLedgerClient struct {
 	GetTransactionFunc func(ctx context.Context, in *v2.GetTransactionRequest, opts ...grpc.CallOption) (*v2.GetTransactionResponse, error)
 }
 
-func (m *MockLedgerClient) GetServiceInfo(ctx context.Context, in *v2.GetServiceInfoRequest, opts ...grpc.CallOption) (*v2.GetServiceInfoResponse, error) {
+func (m *MockLedgerClient) GetServiceInfo(
+	ctx context.Context,
+	in *v2.GetServiceInfoRequest,
+	opts ...grpc.CallOption,
+) (*v2.GetServiceInfoResponse, error) {
 	if m.GetServiceInfoFunc != nil {
 		return m.GetServiceInfoFunc(ctx, in, opts...)
 	}
 	return nil, fmt.Errorf("GetServiceInfo not implemented in mock")
 }
 
-func (m *MockLedgerClient) GetCheckpoint(ctx context.Context, in *v2.GetCheckpointRequest, opts ...grpc.CallOption) (*v2.GetCheckpointResponse, error) {
+func (m *MockLedgerClient) GetCheckpoint(
+	ctx context.Context,
+	in *v2.GetCheckpointRequest,
+	opts ...grpc.CallOption,
+) (*v2.GetCheckpointResponse, error) {
 	if m.GetCheckpointFunc != nil {
 		return m.GetCheckpointFunc(ctx, in, opts...)
 	}
 	return nil, fmt.Errorf("GetCheckpoint not implemented in mock")
 }
 
-func (m *MockLedgerClient) GetTransaction(ctx context.Context, in *v2.GetTransactionRequest, opts ...grpc.CallOption) (*v2.GetTransactionResponse, error) {
+func (m *MockLedgerClient) GetTransaction(
+	ctx context.Context,
+	in *v2.GetTransactionRequest,
+	opts ...grpc.CallOption,
+) (*v2.GetTransactionResponse, error) {
 	if m.GetTransactionFunc != nil {
 		return m.GetTransactionFunc(ctx, in, opts...)
 	}
@@ -41,16 +53,35 @@ func (m *MockLedgerClient) GetTransaction(ctx context.Context, in *v2.GetTransac
 }
 
 // Stubs for interface compliance
-func (m *MockLedgerClient) GetObject(ctx context.Context, in *v2.GetObjectRequest, opts ...grpc.CallOption) (*v2.GetObjectResponse, error) {
+func (m *MockLedgerClient) GetObject(
+	ctx context.Context,
+	in *v2.GetObjectRequest,
+	opts ...grpc.CallOption,
+) (*v2.GetObjectResponse, error) {
 	return nil, nil
 }
-func (m *MockLedgerClient) BatchGetObjects(ctx context.Context, in *v2.BatchGetObjectsRequest, opts ...grpc.CallOption) (*v2.BatchGetObjectsResponse, error) {
+
+func (m *MockLedgerClient) BatchGetObjects(
+	ctx context.Context,
+	in *v2.BatchGetObjectsRequest,
+	opts ...grpc.CallOption,
+) (*v2.BatchGetObjectsResponse, error) {
 	return nil, nil
 }
-func (m *MockLedgerClient) BatchGetTransactions(ctx context.Context, in *v2.BatchGetTransactionsRequest, opts ...grpc.CallOption) (*v2.BatchGetTransactionsResponse, error) {
+
+func (m *MockLedgerClient) BatchGetTransactions(
+	ctx context.Context,
+	in *v2.BatchGetTransactionsRequest,
+	opts ...grpc.CallOption,
+) (*v2.BatchGetTransactionsResponse, error) {
 	return nil, nil
 }
-func (m *MockLedgerClient) GetEpoch(ctx context.Context, in *v2.GetEpochRequest, opts ...grpc.CallOption) (*v2.GetEpochResponse, error) {
+
+func (m *MockLedgerClient) GetEpoch(
+	ctx context.Context,
+	in *v2.GetEpochRequest,
+	opts ...grpc.CallOption,
+) (*v2.GetEpochResponse, error) {
 	return nil, nil
 }
 

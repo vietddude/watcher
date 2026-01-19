@@ -138,7 +138,10 @@ func (r *DefaultRouter) GetProvider(chainID string) (provider.Provider, error) {
 }
 
 // GetProviderWithHint returns a provider with preference for the hint.
-func (r *DefaultRouter) GetProviderWithHint(chainID string, preferredProvider string) (provider.Provider, error) {
+func (r *DefaultRouter) GetProviderWithHint(
+	chainID string,
+	preferredProvider string,
+) (provider.Provider, error) {
 	if preferredProvider != "" {
 		r.mu.RLock()
 		providers := r.chainProviders[chainID]

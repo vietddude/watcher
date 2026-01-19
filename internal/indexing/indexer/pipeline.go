@@ -115,7 +115,12 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 
 	// 3. Reorg Detection
 	// Check if this new block's parent matches our local history
-	reorgInfo, err := p.cfg.Reorg.CheckParentHash(ctx, p.cfg.ChainID, targetBlockNum, block.ParentHash)
+	reorgInfo, err := p.cfg.Reorg.CheckParentHash(
+		ctx,
+		p.cfg.ChainID,
+		targetBlockNum,
+		block.ParentHash,
+	)
 	if err != nil {
 		return p.handleError(ctx, targetBlockNum, fmt.Errorf("reorg check failed: %w", err))
 	}
@@ -160,13 +165,25 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	if p.cfg.ChainType == "sui" {
 		label = "checkpoint"
 	}
-	slog.Info(fmt.Sprintf("Processing %s", label), "chain", p.cfg.ChainName, label, targetBlockNum, "hash", block.Hash[:16]+"...", "txs", len(txs))
+	slog.Info(
+		fmt.Sprintf("Processing %s", label),
+		"chain",
+		p.cfg.ChainName,
+		label,
+		targetBlockNum,
+		"hash",
+		block.Hash[:16]+"...",
+		"txs",
+		len(txs),
+	)
 
 	// Record metrics
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
 
 	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
-	metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum)) // Use processed block as proxy for latest if health check fails
+	metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).
+		Set(float64(targetBlockNum))
+		// Use processed block as proxy for latest if health check fails
 
 	// 5. Filter Transactions using bloom filter
 	var relevantTxs []*domain.Transaction
@@ -185,7 +202,15 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 
 	// Log if we found relevant transactions
 	if len(relevantTxs) > 0 {
-		slog.Info("Found relevant transactions", "block", block.Number, "matched", len(relevantTxs), "total", len(txs))
+		slog.Info(
+			"Found relevant transactions",
+			"block",
+			block.Number,
+			"matched",
+			len(relevantTxs),
+			"total",
+			len(txs),
+		)
 	}
 
 	// Convert to Events

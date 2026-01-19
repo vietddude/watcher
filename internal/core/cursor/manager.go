@@ -75,7 +75,11 @@ func (m *DefaultManager) Get(ctx context.Context, chainID string) (*domain.Curso
 }
 
 // Initialize creates a new cursor at starting block.
-func (m *DefaultManager) Initialize(ctx context.Context, chainID string, startBlock uint64) (*domain.Cursor, error) {
+func (m *DefaultManager) Initialize(
+	ctx context.Context,
+	chainID string,
+	startBlock uint64,
+) (*domain.Cursor, error) {
 	cursor := &domain.Cursor{
 		ChainID:      chainID,
 		CurrentBlock: startBlock,
@@ -97,7 +101,12 @@ func (m *DefaultManager) Initialize(ctx context.Context, chainID string, startBl
 }
 
 // Advance moves cursor forward after processing a block.
-func (m *DefaultManager) Advance(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error {
+func (m *DefaultManager) Advance(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+	blockHash string,
+) error {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
@@ -122,8 +131,13 @@ func (m *DefaultManager) Advance(ctx context.Context, chainID string, blockNumbe
 		}
 		// If hash mismatch, it might be a reorganization or error.
 		// For now, fail with specific error so we can distinguish it.
-		return fmt.Errorf("idempotency check failed: cursor at %d with hash %s, got same block %d with hash %s",
-			cursor.CurrentBlock, cursor.CurrentBlockHash, blockNumber, blockHash)
+		return fmt.Errorf(
+			"idempotency check failed: cursor at %d with hash %s, got same block %d with hash %s",
+			cursor.CurrentBlock,
+			cursor.CurrentBlockHash,
+			blockNumber,
+			blockHash,
+		)
 	}
 
 	if blockNumber != expectedBlock {
@@ -146,7 +160,12 @@ func (m *DefaultManager) Advance(ctx context.Context, chainID string, blockNumbe
 }
 
 // SetState transitions cursor to a new state.
-func (m *DefaultManager) SetState(ctx context.Context, chainID string, newState State, reason string) error {
+func (m *DefaultManager) SetState(
+	ctx context.Context,
+	chainID string,
+	newState State,
+	reason string,
+) error {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
@@ -154,7 +173,12 @@ func (m *DefaultManager) SetState(ctx context.Context, chainID string, newState 
 
 	// Validate transition
 	if !CanTransition(cursor.State, newState) {
-		return fmt.Errorf("%w: cannot transition from %s to %s", ErrInvalidTransition, cursor.State, newState)
+		return fmt.Errorf(
+			"%w: cannot transition from %s to %s",
+			ErrInvalidTransition,
+			cursor.State,
+			newState,
+		)
 	}
 
 	// Create transition record
@@ -181,7 +205,12 @@ func (m *DefaultManager) SetState(ctx context.Context, chainID string, newState 
 }
 
 // Rollback moves cursor back for reorg handling.
-func (m *DefaultManager) Rollback(ctx context.Context, chainID string, safeBlock uint64, safeHash string) error {
+func (m *DefaultManager) Rollback(
+	ctx context.Context,
+	chainID string,
+	safeBlock uint64,
+	safeHash string,
+) error {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
@@ -189,7 +218,11 @@ func (m *DefaultManager) Rollback(ctx context.Context, chainID string, safeBlock
 
 	// Transition to REORG state if not already
 	if cursor.State != domain.CursorStateReorg {
-		transition := NewTransition(cursor.State, domain.CursorStateReorg, fmt.Sprintf("rollback to block %d", safeBlock))
+		transition := NewTransition(
+			cursor.State,
+			domain.CursorStateReorg,
+			fmt.Sprintf("rollback to block %d", safeBlock),
+		)
 
 		if err := m.repo.UpdateState(ctx, chainID, domain.CursorStateReorg); err != nil {
 			return fmt.Errorf("failed to set reorg state: %w", err)
@@ -236,7 +269,11 @@ func (m *DefaultManager) Resume(ctx context.Context, chainID string) error {
 }
 
 // GetLag returns how many blocks behind the chain tip.
-func (m *DefaultManager) GetLag(ctx context.Context, chainID string, latestBlock uint64) (int64, error) {
+func (m *DefaultManager) GetLag(
+	ctx context.Context,
+	chainID string,
+	latestBlock uint64,
+) (int64, error) {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get cursor: %w", err)
@@ -246,7 +283,12 @@ func (m *DefaultManager) GetLag(ctx context.Context, chainID string, latestBlock
 }
 
 // SetMetadata updates cursor metadata.
-func (m *DefaultManager) SetMetadata(ctx context.Context, chainID string, key string, value any) error {
+func (m *DefaultManager) SetMetadata(
+	ctx context.Context,
+	chainID string,
+	key string,
+	value any,
+) error {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)

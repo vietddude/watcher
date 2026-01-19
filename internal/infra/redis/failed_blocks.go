@@ -58,7 +58,10 @@ func (r *FailedBlockRepo) Add(ctx context.Context, fb *domain.FailedBlock) error
 }
 
 // GetNext retrieves the next failed block to retry.
-func (r *FailedBlockRepo) GetNext(ctx context.Context, chainID string) (*domain.FailedBlock, error) {
+func (r *FailedBlockRepo) GetNext(
+	ctx context.Context,
+	chainID string,
+) (*domain.FailedBlock, error) {
 	// Get the first member (lowest retry count)
 	results, err := r.rdb.ZRange(ctx, r.queueKey(), 0, 0).Result()
 	if err != nil {
@@ -144,7 +147,10 @@ func (r *FailedBlockRepo) MarkResolved(ctx context.Context, id string) error {
 }
 
 // GetAll retrieves all failed blocks.
-func (r *FailedBlockRepo) GetAll(ctx context.Context, chainID string) ([]*domain.FailedBlock, error) {
+func (r *FailedBlockRepo) GetAll(
+	ctx context.Context,
+	chainID string,
+) ([]*domain.FailedBlock, error) {
 	// Get all IDs
 	ids, err := r.rdb.ZRange(ctx, r.queueKey(), 0, -1).Result()
 	if err != nil {

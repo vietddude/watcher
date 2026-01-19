@@ -26,7 +26,12 @@ type ReorgInfo struct {
 // This uses data already fetched (0 extra RPC calls).
 //
 // Returns ReorgInfo with Detected=true if reorg found.
-func (d *Detector) CheckParentHash(ctx context.Context, chainID string, newBlockNum uint64, parentHash string) (*ReorgInfo, error) {
+func (d *Detector) CheckParentHash(
+	ctx context.Context,
+	chainID string,
+	newBlockNum uint64,
+	parentHash string,
+) (*ReorgInfo, error) {
 	if newBlockNum == 0 {
 		return &ReorgInfo{Detected: false}, nil
 	}
@@ -65,7 +70,12 @@ func (d *Detector) CheckParentHash(ctx context.Context, chainID string, newBlock
 
 // findSafePoint walks backwards to find the last matching block.
 // Uses only stored data (no RPC calls).
-func (d *Detector) findSafePoint(ctx context.Context, chainID string, fromBlock uint64, expectedHash string) (safeBlock uint64, safeHash string, depth int, err error) {
+func (d *Detector) findSafePoint(
+	ctx context.Context,
+	chainID string,
+	fromBlock uint64,
+	expectedHash string,
+) (safeBlock uint64, safeHash string, depth int, err error) {
 	// Start from the mismatched block and go backwards
 	currentBlock := fromBlock
 	depth = 1
@@ -114,7 +124,12 @@ func (d *Detector) findSafePoint(ctx context.Context, chainID string, fromBlock 
 
 // VerifyWithRPC verifies block hash by fetching from RPC.
 // Only use this when you need to confirm a reorg.
-func (d *Detector) VerifyWithRPC(ctx context.Context, chainID string, blockNum uint64, fetcher HashFetcher) (bool, error) {
+func (d *Detector) VerifyWithRPC(
+	ctx context.Context,
+	chainID string,
+	blockNum uint64,
+	fetcher HashFetcher,
+) (bool, error) {
 	storedBlock, err := d.blockRepo.GetByNumber(ctx, chainID, blockNum)
 	if err != nil {
 		return false, fmt.Errorf("failed to get stored block: %w", err)

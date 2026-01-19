@@ -29,7 +29,14 @@ func (r *MissingBlockRepo) Add(ctx context.Context, missing *domain.MissingBlock
 		status = "pending"
 	}
 
-	_, err := r.db.ExecContext(ctx, query, missing.ChainID, missing.FromBlock, missing.ToBlock, status)
+	_, err := r.db.ExecContext(
+		ctx,
+		query,
+		missing.ChainID,
+		missing.FromBlock,
+		missing.ToBlock,
+		status,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to add missing range: %w", err)
 	}
@@ -37,7 +44,10 @@ func (r *MissingBlockRepo) Add(ctx context.Context, missing *domain.MissingBlock
 }
 
 // GetNext retrieves the next missing block to process.
-func (r *MissingBlockRepo) GetNext(ctx context.Context, chainID string) (*domain.MissingBlock, error) {
+func (r *MissingBlockRepo) GetNext(
+	ctx context.Context,
+	chainID string,
+) (*domain.MissingBlock, error) {
 	query := `
 		SELECT id, chain_id, from_block, to_block, status, created_at, updated_at
 		FROM missing_blocks
@@ -92,7 +102,10 @@ func (r *MissingBlockRepo) MarkFailed(ctx context.Context, id string, errorMsg s
 }
 
 // GetPending retrieves all pending missing blocks (up to a reasonable limit?).
-func (r *MissingBlockRepo) GetPending(ctx context.Context, chainID string) ([]*domain.MissingBlock, error) {
+func (r *MissingBlockRepo) GetPending(
+	ctx context.Context,
+	chainID string,
+) ([]*domain.MissingBlock, error) {
 	// Interface doesn't specify limit, but let's limit to avoid massive query
 	query := `
 		SELECT id, chain_id, from_block, to_block, status

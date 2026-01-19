@@ -60,7 +60,10 @@ func (r *mockFailedRepo) MarkResolved(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *mockFailedRepo) GetAll(ctx context.Context, chainID string) ([]*domain.FailedBlock, error) {
+func (r *mockFailedRepo) GetAll(
+	ctx context.Context,
+	chainID string,
+) ([]*domain.FailedBlock, error) {
 	return r.blocks, nil
 }
 func (r *mockFailedRepo) Count(ctx context.Context, chainID string) (int, error) {

@@ -76,7 +76,10 @@ func (a *Adapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain
 }
 
 // GetTransactions returns all executed transactions in a block
-func (a *Adapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+func (a *Adapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	// Fetches the checkpoint details to ensure we have transactions.
 	cp, err := a.client.GetCheckpointDetails(ctx, block.Number)
 	if err != nil {
@@ -93,7 +96,11 @@ func (a *Adapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*
 }
 
 // FilterTransactions filters transactions based on sender (Sui optimization)
-func (a *Adapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error) {
+func (a *Adapter) FilterTransactions(
+	ctx context.Context,
+	txs []*domain.Transaction,
+	addresses []string,
+) ([]*domain.Transaction, error) {
 	// In-memory filter for now.
 	// If we wanted to use Sui specific filtering at query time, we would need a different API.
 	// But the interface assumes we already have the transactions.
@@ -114,7 +121,11 @@ func (a *Adapter) FilterTransactions(ctx context.Context, txs []*domain.Transact
 }
 
 // VerifyBlockHash checks if the block hash matches
-func (a *Adapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+func (a *Adapter) VerifyBlockHash(
+	ctx context.Context,
+	blockNumber uint64,
+	expectedHash string,
+) (bool, error) {
 	cp, err := a.client.GetCheckpoint(ctx, blockNumber)
 	if err != nil {
 		return false, err
@@ -144,7 +155,11 @@ func (a *Adapter) SupportsBloomFilter() bool {
 
 // HasRelevantTransactions checks if the block contains transactions of interest
 // This implements the PreFilterAdapter interface for optimization.
-func (a *Adapter) HasRelevantTransactions(ctx context.Context, block *domain.Block, addresses []string) (bool, error) {
+func (a *Adapter) HasRelevantTransactions(
+	ctx context.Context,
+	block *domain.Block,
+	addresses []string,
+) (bool, error) {
 	// 1. Convert addresses to map for O(1) lookup
 	addrMap := make(map[string]struct{}, len(addresses))
 	for _, addr := range addresses {
@@ -204,11 +219,16 @@ func (a *Adapter) mapCheckpointToBlock(cp *suipb.Checkpoint) (*domain.Block, err
 	}, nil
 }
 
-func (a *Adapter) mapTransaction(execTx *suipb.ExecutedTransaction, block *domain.Block) *domain.Transaction {
+func (a *Adapter) mapTransaction(
+	execTx *suipb.ExecutedTransaction,
+	block *domain.Block,
+) *domain.Transaction {
 	tx := execTx.GetTransaction()
 
 	status := domain.TxStatusFailed
-	if execTx.Effects != nil && execTx.Effects.Status != nil && execTx.Effects.Status.Success != nil && *execTx.Effects.Status.Success {
+	if execTx.Effects != nil && execTx.Effects.Status != nil &&
+		execTx.Effects.Status.Success != nil &&
+		*execTx.Effects.Status.Success {
 		status = domain.TxStatusSuccess
 	}
 

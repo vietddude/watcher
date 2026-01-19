@@ -47,7 +47,12 @@ func (r *mockCursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error 
 	return nil
 }
 
-func (r *mockCursorRepo) UpdateBlock(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error {
+func (r *mockCursorRepo) UpdateBlock(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+	blockHash string,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -61,7 +66,11 @@ func (r *mockCursorRepo) UpdateBlock(ctx context.Context, chainID string, blockN
 	return nil
 }
 
-func (r *mockCursorRepo) UpdateState(ctx context.Context, chainID string, state domain.CursorState) error {
+func (r *mockCursorRepo) UpdateState(
+	ctx context.Context,
+	chainID string,
+	state domain.CursorState,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -74,7 +83,12 @@ func (r *mockCursorRepo) UpdateState(ctx context.Context, chainID string, state 
 	return nil
 }
 
-func (r *mockCursorRepo) Rollback(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error {
+func (r *mockCursorRepo) Rollback(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+	blockHash string,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -304,7 +318,9 @@ func TestMetricsCollector_TransitionTracking(t *testing.T) {
 	mc := NewMetricsCollector(10)
 
 	mc.RecordTransition(NewTransition(domain.CursorStateInit, domain.CursorStateScanning, "start"))
-	mc.RecordTransition(NewTransition(domain.CursorStateScanning, domain.CursorStateReorg, "reorg detected"))
+	mc.RecordTransition(
+		NewTransition(domain.CursorStateScanning, domain.CursorStateReorg, "reorg detected"),
+	)
 
 	metrics := mc.GetMetrics()
 

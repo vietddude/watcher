@@ -34,7 +34,13 @@ type MetricsCollector interface {
 	RecordBlockProcessed(chainID string, blockNumber uint64, duration time.Duration)
 
 	// RecordRPCCall records an RPC call
-	RecordRPCCall(chainID string, provider string, method string, success bool, duration time.Duration)
+	RecordRPCCall(
+		chainID string,
+		provider string,
+		method string,
+		success bool,
+		duration time.Duration,
+	)
 
 	// RecordEventEmitted records an emitted event
 	RecordEventEmitted(chainID string, eventType string, success bool)

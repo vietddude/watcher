@@ -127,7 +127,10 @@ func (p *GRPCProvider) Call(ctx context.Context, method string, params []any) (a
 
 // BatchCall - gRPC doesn't support generic batching like JSON-RPC.
 // We implement it by looping.
-func (p *GRPCProvider) BatchCall(ctx context.Context, requests []BatchRequest) ([]BatchResponse, error) {
+func (p *GRPCProvider) BatchCall(
+	ctx context.Context,
+	requests []BatchRequest,
+) ([]BatchResponse, error) {
 	// Not truly supported, but we can iterate.
 	// However, BatchRequest params are []any. How do we map that?
 	// This provider expects params to be [req, resp].

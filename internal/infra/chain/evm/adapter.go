@@ -88,7 +88,10 @@ func (a *EVMAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*dom
 	return a.parseBlock(blockData)
 }
 
-func (a *EVMAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+func (a *EVMAdapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	if block.TxCount == 0 {
 		return []*domain.Transaction{}, nil
 	}
@@ -129,7 +132,11 @@ func (a *EVMAdapter) GetTransactions(ctx context.Context, block *domain.Block) (
 	return transactions, nil
 }
 
-func (a *EVMAdapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error) {
+func (a *EVMAdapter) FilterTransactions(
+	ctx context.Context,
+	txs []*domain.Transaction,
+	addresses []string,
+) ([]*domain.Transaction, error) {
 	// Use bloom filter for fast filtering
 	if !a.bloomFilter.IsInitialized() {
 		a.bloomFilter.Build(addresses)
@@ -152,7 +159,11 @@ func (a *EVMAdapter) FilterTransactions(ctx context.Context, txs []*domain.Trans
 	return filtered, nil
 }
 
-func (a *EVMAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+func (a *EVMAdapter) VerifyBlockHash(
+	ctx context.Context,
+	blockNumber uint64,
+	expectedHash string,
+) (bool, error) {
 	block, err := a.GetBlock(ctx, blockNumber)
 	if err != nil {
 		return false, err
@@ -245,7 +256,10 @@ func (a *EVMAdapter) parseBlock(blockData map[string]any) (*domain.Block, error)
 	}, nil
 }
 
-func (a *EVMAdapter) parseTransaction(txData map[string]any, block *domain.Block) (*domain.Transaction, error) {
+func (a *EVMAdapter) parseTransaction(
+	txData map[string]any,
+	block *domain.Block,
+) (*domain.Transaction, error) {
 	txHash, ok := txData["hash"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid tx hash")
@@ -302,7 +316,10 @@ func (a *EVMAdapter) parseTransaction(txData map[string]any, block *domain.Block
 	}, nil
 }
 
-func (a *EVMAdapter) getTransactionReceipt(ctx context.Context, txHash string) (map[string]any, error) {
+func (a *EVMAdapter) getTransactionReceipt(
+	ctx context.Context,
+	txHash string,
+) (map[string]any, error) {
 	result, err := a.rpcProvider.Call(ctx, "eth_getTransactionReceipt", []any{txHash})
 	if err != nil {
 		return nil, err

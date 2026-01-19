@@ -22,7 +22,11 @@ type Adapter interface {
 
 	// FilterTransactions filters transactions based on tracked addresses
 	// Uses chain-specific optimization (bloom filter for EVM, sender filter for Sui, UTXO for Bitcoin)
-	FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error)
+	FilterTransactions(
+		ctx context.Context,
+		txs []*domain.Transaction,
+		addresses []string,
+	) ([]*domain.Transaction, error)
 
 	// VerifyBlockHash verifies if a block hash matches the one on chain
 	VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error)
@@ -44,5 +48,9 @@ type Adapter interface {
 // PreFilterAdapter is an optional interface for adapters that can check for relevance before fetching transactions
 type PreFilterAdapter interface {
 	// HasRelevantTransactions checks if the block might contain transactions of interest
-	HasRelevantTransactions(ctx context.Context, block *domain.Block, addresses []string) (bool, error)
+	HasRelevantTransactions(
+		ctx context.Context,
+		block *domain.Block,
+		addresses []string,
+	) (bool, error)
 }

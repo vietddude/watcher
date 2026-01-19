@@ -30,7 +30,12 @@ type BlockRepository interface {
 	GetLatest(ctx context.Context, chainID string) (*domain.Block, error)
 
 	// UpdateStatus updates block status
-	UpdateStatus(ctx context.Context, chainID string, blockNumber uint64, status domain.BlockStatus) error
+	UpdateStatus(
+		ctx context.Context,
+		chainID string,
+		blockNumber uint64,
+		status domain.BlockStatus,
+	) error
 
 	// FindGaps finds missing blocks in a range
 	FindGaps(ctx context.Context, chainID string, fromBlock, toBlock uint64) ([]Gap, error)
@@ -56,7 +61,11 @@ type TransactionRepository interface {
 	GetByHash(ctx context.Context, chainID string, txHash string) (*domain.Transaction, error)
 
 	// GetByBlock retrieves all transactions in a block
-	GetByBlock(ctx context.Context, chainID string, blockNumber uint64) ([]*domain.Transaction, error)
+	GetByBlock(
+		ctx context.Context,
+		chainID string,
+		blockNumber uint64,
+	) ([]*domain.Transaction, error)
 
 	// UpdateStatus updates transaction status (for reorg)
 	UpdateStatus(ctx context.Context, chainID string, txHash string, status domain.TxStatus) error

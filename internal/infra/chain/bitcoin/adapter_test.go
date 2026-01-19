@@ -21,7 +21,10 @@ func (m *MockProvider) Call(ctx context.Context, method string, params []any) (a
 	return nil, nil
 }
 
-func (m *MockProvider) BatchCall(ctx context.Context, requests []rpc.BatchRequest) ([]rpc.BatchResponse, error) {
+func (m *MockProvider) BatchCall(
+	ctx context.Context,
+	requests []rpc.BatchRequest,
+) ([]rpc.BatchResponse, error) {
 	return nil, nil
 }
 

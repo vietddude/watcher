@@ -18,7 +18,10 @@ type CoordinatedProvider struct {
 }
 
 // NewCoordinatedProvider creates a new provider that uses coordination logic.
-func NewCoordinatedProvider(chainID, chainName string, coordinator *Coordinator) *CoordinatedProvider {
+func NewCoordinatedProvider(
+	chainID, chainName string,
+	coordinator *Coordinator,
+) *CoordinatedProvider {
 	return &CoordinatedProvider{
 		chainID:     chainID,
 		chainName:   chainName,
@@ -52,7 +55,10 @@ func (p *CoordinatedProvider) Call(ctx context.Context, method string, params []
 }
 
 // BatchCall - Coordinated batch calls are not fully implemented yet, falling back to sequential calls or error.
-func (p *CoordinatedProvider) BatchCall(ctx context.Context, requests []provider.BatchRequest) ([]provider.BatchResponse, error) {
+func (p *CoordinatedProvider) BatchCall(
+	ctx context.Context,
+	requests []provider.BatchRequest,
+) ([]provider.BatchResponse, error) {
 	bestProvider, err := p.coordinator.GetBestProvider(p.chainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provider for batch call: %w", err)
@@ -65,7 +71,8 @@ func (p *CoordinatedProvider) BatchCall(ctx context.Context, requests []provider
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, "batch").Add(float64(len(requests)))
+	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, "batch").
+		Add(float64(len(requests)))
 	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, "batch").Observe(duration)
 
 	if err != nil {

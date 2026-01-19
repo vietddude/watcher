@@ -59,7 +59,11 @@ func (r *BlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error
 	return nil
 }
 
-func (r *BlockRepo) GetByNumber(ctx context.Context, chainID string, num uint64) (*domain.Block, error) {
+func (r *BlockRepo) GetByNumber(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+) (*domain.Block, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
 	for _, b := range r.store.blocks {
@@ -70,7 +74,11 @@ func (r *BlockRepo) GetByNumber(ctx context.Context, chainID string, num uint64)
 	return nil, nil
 }
 
-func (r *BlockRepo) GetByHash(ctx context.Context, chainID string, hash string) (*domain.Block, error) {
+func (r *BlockRepo) GetByHash(
+	ctx context.Context,
+	chainID string,
+	hash string,
+) (*domain.Block, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
 	key := chainID + hash
@@ -91,7 +99,12 @@ func (r *BlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Bloc
 	return max, nil
 }
 
-func (r *BlockRepo) UpdateStatus(ctx context.Context, chainID string, num uint64, status domain.BlockStatus) error {
+func (r *BlockRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+	status domain.BlockStatus,
+) error {
 	b, err := r.GetByNumber(ctx, chainID, num)
 	if err != nil {
 		return err
@@ -103,7 +116,11 @@ func (r *BlockRepo) UpdateStatus(ctx context.Context, chainID string, num uint64
 	return nil
 }
 
-func (r *BlockRepo) FindGaps(ctx context.Context, chainID string, from, to uint64) ([]storage.Gap, error) {
+func (r *BlockRepo) FindGaps(
+	ctx context.Context,
+	chainID string,
+	from, to uint64,
+) ([]storage.Gap, error) {
 	return nil, nil // TODO: Implement gap finding
 }
 
@@ -148,14 +165,22 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 	return nil
 }
 
-func (r *TxRepo) GetByHash(ctx context.Context, chainID string, hash string) (*domain.Transaction, error) {
+func (r *TxRepo) GetByHash(
+	ctx context.Context,
+	chainID string,
+	hash string,
+) (*domain.Transaction, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
 	key := chainID + hash
 	return r.store.txs[key], nil
 }
 
-func (r *TxRepo) GetByBlock(ctx context.Context, chainID string, num uint64) ([]*domain.Transaction, error) {
+func (r *TxRepo) GetByBlock(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+) ([]*domain.Transaction, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
 	var txs []*domain.Transaction
@@ -167,7 +192,12 @@ func (r *TxRepo) GetByBlock(ctx context.Context, chainID string, num uint64) ([]
 	return txs, nil
 }
 
-func (r *TxRepo) UpdateStatus(ctx context.Context, chainID string, hash string, status domain.TxStatus) error {
+func (r *TxRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	hash string,
+	status domain.TxStatus,
+) error {
 	tx, err := r.GetByHash(ctx, chainID, hash)
 	if err != nil {
 		return err
@@ -221,7 +251,12 @@ func (r *CursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error {
 	return nil
 }
 
-func (r *CursorRepo) UpdateBlock(ctx context.Context, chainID string, num uint64, hash string) error {
+func (r *CursorRepo) UpdateBlock(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+	hash string,
+) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	if c, ok := r.store.cursors[chainID]; ok {
@@ -232,7 +267,11 @@ func (r *CursorRepo) UpdateBlock(ctx context.Context, chainID string, num uint64
 	return fmt.Errorf("cursor not found")
 }
 
-func (r *CursorRepo) UpdateState(ctx context.Context, chainID string, state domain.CursorState) error {
+func (r *CursorRepo) UpdateState(
+	ctx context.Context,
+	chainID string,
+	state domain.CursorState,
+) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	if c, ok := r.store.cursors[chainID]; ok {
@@ -252,7 +291,11 @@ func (r *CursorRepo) Rollback(ctx context.Context, chainID string, num uint64, h
 
 type MissingRepo struct{ store *MemoryStorage }
 
-func NewMissingRepo(s *MemoryStorage) *MissingRepo                           { return &MissingRepo{store: s} }
+func NewMissingRepo(
+	s *MemoryStorage,
+) *MissingRepo {
+	return &MissingRepo{store: s}
+}
 func (r *MissingRepo) Add(ctx context.Context, m *domain.MissingBlock) error { return nil }
 func (r *MissingRepo) GetNext(ctx context.Context, c string) (*domain.MissingBlock, error) {
 	return nil, nil
@@ -271,7 +314,11 @@ func (r *MissingRepo) Count(ctx context.Context, c string) (int, error) { return
 
 type FailedRepo struct{ store *MemoryStorage }
 
-func NewFailedRepo(s *MemoryStorage) *FailedRepo                           { return &FailedRepo{store: s} }
+func NewFailedRepo(
+	s *MemoryStorage,
+) *FailedRepo {
+	return &FailedRepo{store: s}
+}
 func (r *FailedRepo) Add(ctx context.Context, f *domain.FailedBlock) error { return nil }
 func (r *FailedRepo) GetNext(ctx context.Context, c string) (*domain.FailedBlock, error) {
 	return nil, nil

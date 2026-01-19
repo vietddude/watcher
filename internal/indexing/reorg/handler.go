@@ -47,7 +47,12 @@ func (h *Handler) SetRevertCallback(fn func(event RevertEvent)) {
 // 2. Mark reverted transactions
 // 3. Emit revert events
 // 4. Reset cursor
-func (h *Handler) Rollback(ctx context.Context, chainID string, fromBlock, safeBlock uint64, safeHash string) (*RollbackResult, error) {
+func (h *Handler) Rollback(
+	ctx context.Context,
+	chainID string,
+	fromBlock, safeBlock uint64,
+	safeHash string,
+) (*RollbackResult, error) {
 	start := time.Now()
 	result := &RollbackResult{
 		ChainID:   chainID,

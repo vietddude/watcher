@@ -62,7 +62,10 @@ func (r *WalletRepo) Save(ctx context.Context, wallet *domain.WalletAddress) err
 }
 
 // GetByAddress retrieves a wallet by address.
-func (r *WalletRepo) GetByAddress(ctx context.Context, address string) (*domain.WalletAddress, error) {
+func (r *WalletRepo) GetByAddress(
+	ctx context.Context,
+	address string,
+) (*domain.WalletAddress, error) {
 	query := `
 		SELECT id, address, network_type, standard, created_at, updated_at
 		FROM wallet_addresses

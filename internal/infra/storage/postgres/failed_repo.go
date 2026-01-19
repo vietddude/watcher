@@ -31,7 +31,15 @@ func (r *FailedBlockRepo) Add(ctx context.Context, fb *domain.FailedBlock) error
 		status = "pending"
 	}
 
-	_, err := r.db.ExecContext(ctx, query, fb.ChainID, fb.BlockNumber, fb.Error, fb.RetryCount, status)
+	_, err := r.db.ExecContext(
+		ctx,
+		query,
+		fb.ChainID,
+		fb.BlockNumber,
+		fb.Error,
+		fb.RetryCount,
+		status,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to add failed block: %w", err)
 	}
@@ -39,7 +47,10 @@ func (r *FailedBlockRepo) Add(ctx context.Context, fb *domain.FailedBlock) error
 }
 
 // GetNext returns the next failed block to retry.
-func (r *FailedBlockRepo) GetNext(ctx context.Context, chainID string) (*domain.FailedBlock, error) {
+func (r *FailedBlockRepo) GetNext(
+	ctx context.Context,
+	chainID string,
+) (*domain.FailedBlock, error) {
 	query := `
 		SELECT id, chain_id, block_number, error_msg, retry_count, last_attempt, status
 		FROM failed_blocks
@@ -100,7 +111,10 @@ func (r *FailedBlockRepo) MarkResolved(ctx context.Context, id string) error {
 }
 
 // GetAll returns all failed blocks (for debugging/monitoring).
-func (r *FailedBlockRepo) GetAll(ctx context.Context, chainID string) ([]*domain.FailedBlock, error) {
+func (r *FailedBlockRepo) GetAll(
+	ctx context.Context,
+	chainID string,
+) ([]*domain.FailedBlock, error) {
 	query := `
 		SELECT id, chain_id, block_number, error_msg, retry_count, last_attempt, status
 		FROM failed_blocks

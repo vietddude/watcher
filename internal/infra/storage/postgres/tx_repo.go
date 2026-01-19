@@ -116,7 +116,11 @@ func (t *txRow) toDomain() *domain.Transaction {
 }
 
 // GetByHash retrieves a transaction by hash.
-func (r *TxRepo) GetByHash(ctx context.Context, chainID string, txHash string) (*domain.Transaction, error) {
+func (r *TxRepo) GetByHash(
+	ctx context.Context,
+	chainID string,
+	txHash string,
+) (*domain.Transaction, error) {
 	query := `
 		SELECT chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
 		FROM transactions
@@ -136,7 +140,11 @@ func (r *TxRepo) GetByHash(ctx context.Context, chainID string, txHash string) (
 }
 
 // GetByBlock retrieves all transactions in a block.
-func (r *TxRepo) GetByBlock(ctx context.Context, chainID string, blockNumber uint64) ([]*domain.Transaction, error) {
+func (r *TxRepo) GetByBlock(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+) ([]*domain.Transaction, error) {
 	query := `
 		SELECT chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
 		FROM transactions
@@ -157,7 +165,12 @@ func (r *TxRepo) GetByBlock(ctx context.Context, chainID string, blockNumber uin
 }
 
 // UpdateStatus updates transaction status.
-func (r *TxRepo) UpdateStatus(ctx context.Context, chainID string, txHash string, status domain.TxStatus) error {
+func (r *TxRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	txHash string,
+	status domain.TxStatus,
+) error {
 	query := `UPDATE transactions SET status = $1 WHERE chain_id = $2 AND tx_hash = $3`
 	_, err := r.db.ExecContext(ctx, query, string(status), chainID, txHash)
 	return err

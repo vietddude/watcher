@@ -119,7 +119,14 @@ func (c *Client) CallWithFailover(ctx context.Context, method string, params []a
 		}
 	}
 
-	result, err := routing.CallWithRetryAndFailover(ctx, c.router, c.chainID, method, params, routing.DefaultRetryConfig)
+	result, err := routing.CallWithRetryAndFailover(
+		ctx,
+		c.router,
+		c.chainID,
+		method,
+		params,
+		routing.DefaultRetryConfig,
+	)
 
 	if err == nil {
 		p, _ := c.router.GetProvider(c.chainID)
@@ -223,7 +230,8 @@ func (c *Client) getQuotaAwareProvider() (provider.Provider, error) {
 
 			if c.predictiveRotation && c.coordinator != nil {
 				predStats := c.coordinator.GetPredictionStats(c.chainID, p.GetName())
-				if predStats.TimeToExhaustion > 0 && predStats.TimeToExhaustion < c.predictionThreshold {
+				if predStats.TimeToExhaustion > 0 &&
+					predStats.TimeToExhaustion < c.predictionThreshold {
 					continue
 				}
 			}

@@ -16,12 +16,26 @@ var ErrInvalidTransition = errors.New("invalid state transition")
 // ValidTransitions defines allowed state transitions.
 // Key is the current state, value is the list of valid next states.
 var ValidTransitions = map[State][]State{
-	domain.CursorStateInit:     {domain.CursorStateScanning, domain.CursorStateCatchup},
-	domain.CursorStateScanning: {domain.CursorStateCatchup, domain.CursorStateBackfill, domain.CursorStatePaused, domain.CursorStateReorg},
-	domain.CursorStateCatchup:  {domain.CursorStateScanning, domain.CursorStateBackfill, domain.CursorStatePaused, domain.CursorStateReorg},
+	domain.CursorStateInit: {domain.CursorStateScanning, domain.CursorStateCatchup},
+	domain.CursorStateScanning: {
+		domain.CursorStateCatchup,
+		domain.CursorStateBackfill,
+		domain.CursorStatePaused,
+		domain.CursorStateReorg,
+	},
+	domain.CursorStateCatchup: {
+		domain.CursorStateScanning,
+		domain.CursorStateBackfill,
+		domain.CursorStatePaused,
+		domain.CursorStateReorg,
+	},
 	domain.CursorStateBackfill: {domain.CursorStateScanning, domain.CursorStatePaused},
-	domain.CursorStatePaused:   {domain.CursorStateScanning, domain.CursorStateCatchup, domain.CursorStateBackfill},
-	domain.CursorStateReorg:    {domain.CursorStateScanning, domain.CursorStateCatchup},
+	domain.CursorStatePaused: {
+		domain.CursorStateScanning,
+		domain.CursorStateCatchup,
+		domain.CursorStateBackfill,
+	},
+	domain.CursorStateReorg: {domain.CursorStateScanning, domain.CursorStateCatchup},
 }
 
 // CanTransition checks if a transition from one state to another is valid.

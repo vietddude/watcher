@@ -51,7 +51,11 @@ func NewCoordinator(router routing.Router, budget BudgetTracker) *Coordinator {
 }
 
 // NewCoordinatorWithConfig creates a coordinator with custom config.
-func NewCoordinatorWithConfig(router routing.Router, budget BudgetTracker, config CoordinatorConfig) *Coordinator {
+func NewCoordinatorWithConfig(
+	router routing.Router,
+	budget BudgetTracker,
+	config CoordinatorConfig,
+) *Coordinator {
 	return &Coordinator{
 		router:              router,
 		budget:              budget,
@@ -123,7 +127,10 @@ func (c *Coordinator) scoreProvider(chainID string, p provider.Provider) (float6
 		timeToExhaust := c.predictor.PredictTimeToExhaustion(p.GetName(), usage.RemainingCalls)
 		if timeToExhaust > 0 && timeToExhaust < c.predictionThreshold {
 			score -= 40
-			reasons = append(reasons, fmt.Sprintf("predicted exhaustion in %v", timeToExhaust.Round(time.Minute)))
+			reasons = append(
+				reasons,
+				fmt.Sprintf("predicted exhaustion in %v", timeToExhaust.Round(time.Minute)),
+			)
 		}
 	}
 
@@ -191,7 +198,10 @@ func (c *Coordinator) RecordRequest(chainID, providerName, method string) {
 }
 
 // RotateIfNeeded checks if rotation is needed and performs it.
-func (c *Coordinator) RotateIfNeeded(chainID string, currentProvider provider.Provider) (provider.Provider, bool, string) {
+func (c *Coordinator) RotateIfNeeded(
+	chainID string,
+	currentProvider provider.Provider,
+) (provider.Provider, bool, string) {
 	shouldRotate, reason := c.ShouldRotate(chainID, currentProvider.GetName())
 	if !shouldRotate {
 		return currentProvider, false, ""
@@ -214,7 +224,9 @@ func (c *Coordinator) RotateIfNeeded(chainID string, currentProvider provider.Pr
 }
 
 // SetRotationCallback sets a callback for rotation events.
-func (c *Coordinator) SetRotationCallback(fn func(chainID, fromProvider, toProvider string, reason string)) {
+func (c *Coordinator) SetRotationCallback(
+	fn func(chainID, fromProvider, toProvider string, reason string),
+) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onRotation = fn
@@ -227,7 +239,11 @@ func (c *Coordinator) GetPredictionStats(chainID, providerName string) Predictio
 }
 
 // CallWithCoordination makes a call with full coordination.
-func (c *Coordinator) CallWithCoordination(ctx context.Context, chainID, method string, params []any) (any, error) {
+func (c *Coordinator) CallWithCoordination(
+	ctx context.Context,
+	chainID, method string,
+	params []any,
+) (any, error) {
 	p, err := c.GetBestProvider(chainID)
 	if err != nil {
 		return nil, err

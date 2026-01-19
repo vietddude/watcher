@@ -37,14 +37,25 @@ type ProviderShim struct {
 }
 
 // Invoke delegates to provider.Call
-func (s *ProviderShim) Invoke(ctx context.Context, method string, args interface{}, reply interface{}, opts ...grpc.CallOption) error {
+func (s *ProviderShim) Invoke(
+	ctx context.Context,
+	method string,
+	args interface{},
+	reply interface{},
+	opts ...grpc.CallOption,
+) error {
 	// We expect the provider to handle the invocation given [args, reply]
 	_, err := s.provider.Call(ctx, method, []any{args, reply})
 	return err
 }
 
 // NewStream is not supported yet
-func (s *ProviderShim) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+func (s *ProviderShim) NewStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	method string,
+	opts ...grpc.CallOption,
+) (grpc.ClientStream, error) {
 	return nil, fmt.Errorf("streaming not implemented")
 }
 
@@ -93,9 +104,18 @@ func (c *Client) GetCheckpoint(ctx context.Context, sequenceNumber uint64) (*v2.
 }
 
 // GetCheckpointDetails returns a checkpoint with full transaction data
-func (c *Client) GetCheckpointDetails(ctx context.Context, sequenceNumber uint64) (*v2.Checkpoint, error) {
+func (c *Client) GetCheckpointDetails(
+	ctx context.Context,
+	sequenceNumber uint64,
+) (*v2.Checkpoint, error) {
 	// Include "transactions" in the read mask
-	mask, err := fieldmaskpb.New(&v2.Checkpoint{}, "sequence_number", "digest", "summary", "transactions")
+	mask, err := fieldmaskpb.New(
+		&v2.Checkpoint{},
+		"sequence_number",
+		"digest",
+		"summary",
+		"transactions",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create field mask: %w", err)
 	}
@@ -121,7 +141,10 @@ func (c *Client) GetCheckpointDetails(ctx context.Context, sequenceNumber uint64
 
 // GetCheckpointTransactionOwners returns a checkpoint with only transaction sender and modified object owners
 // This is used for pre-filtering blocks based on improved "bloom filter" logic.
-func (c *Client) GetCheckpointTransactionOwners(ctx context.Context, sequenceNumber uint64) (*v2.Checkpoint, error) {
+func (c *Client) GetCheckpointTransactionOwners(
+	ctx context.Context,
+	sequenceNumber uint64,
+) (*v2.Checkpoint, error) {
 	// Construct mask to fetch only ownership information
 	mask, err := fieldmaskpb.New(&v2.Checkpoint{},
 		"transactions.transaction.sender",
@@ -152,7 +175,10 @@ func (c *Client) GetCheckpointTransactionOwners(ctx context.Context, sequenceNum
 }
 
 // GetTransaction returns a transaction by digest
-func (c *Client) GetTransaction(ctx context.Context, digest string) (*v2.ExecutedTransaction, error) {
+func (c *Client) GetTransaction(
+	ctx context.Context,
+	digest string,
+) (*v2.ExecutedTransaction, error) {
 	resp, err := c.ledger.GetTransaction(ctx, &v2.GetTransactionRequest{
 		Digest: &digest,
 	})

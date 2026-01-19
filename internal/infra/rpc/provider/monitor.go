@@ -243,7 +243,11 @@ func (pm *ProviderMonitor) GetStats() MonitorStats {
 	}
 
 	if len(pm.requestTimestamps) > 0 {
-		stats.UsagePercentage = float64(len(pm.requestTimestamps)) / float64(pm.EstimatedDailyLimit) * 100
+		stats.UsagePercentage = float64(
+			len(pm.requestTimestamps),
+		) / float64(
+			pm.EstimatedDailyLimit,
+		) * 100
 	}
 
 	return stats

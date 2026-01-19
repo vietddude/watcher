@@ -19,7 +19,11 @@ type BitcoinAdapter struct {
 	log            logger.Logger
 }
 
-func NewBitcoinAdapter(chainID string, provider rpc.Provider, finalityBlocks uint64) *BitcoinAdapter {
+func NewBitcoinAdapter(
+	chainID string,
+	provider rpc.Provider,
+	finalityBlocks uint64,
+) *BitcoinAdapter {
 	return &BitcoinAdapter{
 		chainID:        chainID,
 		rpcProvider:    provider,
@@ -68,7 +72,10 @@ func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*dom
 	return a.parseBlock(blockData)
 }
 
-func (a *BitcoinAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
+func (a *BitcoinAdapter) GetBlockByHash(
+	ctx context.Context,
+	blockHash string,
+) (*domain.Block, error) {
 	result, err := a.rpcProvider.Call(ctx, "getblock", []any{blockHash, 1})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash: %w", err)
@@ -82,7 +89,10 @@ func (a *BitcoinAdapter) GetBlockByHash(ctx context.Context, blockHash string) (
 	return a.parseBlock(blockData)
 }
 
-func (a *BitcoinAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+func (a *BitcoinAdapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	if block.TxCount == 0 {
 		return []*domain.Transaction{}, nil
 	}
@@ -123,7 +133,11 @@ func (a *BitcoinAdapter) GetTransactions(ctx context.Context, block *domain.Bloc
 	return transactions, nil
 }
 
-func (a *BitcoinAdapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error) {
+func (a *BitcoinAdapter) FilterTransactions(
+	ctx context.Context,
+	txs []*domain.Transaction,
+	addresses []string,
+) ([]*domain.Transaction, error) {
 	// Outputs-only approach: filter by "To" addresses (recipients)
 	// No bloom filter needed - Bitcoin gets full data in 1 API call
 	addressMap := make(map[string]bool)
@@ -141,7 +155,11 @@ func (a *BitcoinAdapter) FilterTransactions(ctx context.Context, txs []*domain.T
 	return filtered, nil
 }
 
-func (a *BitcoinAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+func (a *BitcoinAdapter) VerifyBlockHash(
+	ctx context.Context,
+	blockNumber uint64,
+	expectedHash string,
+) (bool, error) {
 	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []any{blockNumber})
 	if err != nil {
 		return false, err
@@ -213,7 +231,11 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]any) (*domain.Block, er
 	}, nil
 }
 
-func (a *BitcoinAdapter) parseUTXOTransaction(txData map[string]any, block *domain.Block, txIndex int) ([]*domain.Transaction, error) {
+func (a *BitcoinAdapter) parseUTXOTransaction(
+	txData map[string]any,
+	block *domain.Block,
+	txIndex int,
+) ([]*domain.Transaction, error) {
 	txHash, ok := txData["txid"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid tx hash")

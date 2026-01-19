@@ -23,7 +23,11 @@ type mockAdapter struct {
 func (m *mockAdapter) GetBlock(ctx context.Context, num uint64) (*domain.Block, error) {
 	return m.blocks[num], nil
 }
-func (m *mockAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+
+func (m *mockAdapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	return m.txs[block.Hash], nil
 }
 
@@ -32,7 +36,12 @@ func (m *mockAdapter) GetLatestBlock(ctx context.Context) (uint64, error) { retu
 func (m *mockAdapter) GetBlockByHash(ctx context.Context, hash string) (*domain.Block, error) {
 	return nil, nil
 }
-func (m *mockAdapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addrs []string) ([]*domain.Transaction, error) {
+
+func (m *mockAdapter) FilterTransactions(
+	ctx context.Context,
+	txs []*domain.Transaction,
+	addrs []string,
+) ([]*domain.Transaction, error) {
 	return nil, nil
 }
 func (m *mockAdapter) VerifyBlockHash(ctx context.Context, num uint64, hash string) (bool, error) {
@@ -53,7 +62,13 @@ type mockCursorMgr struct {
 func (m *mockCursorMgr) Get(ctx context.Context, chainID string) (*domain.Cursor, error) {
 	return &domain.Cursor{CurrentBlock: m.current, State: m.state}, nil
 }
-func (m *mockCursorMgr) Advance(ctx context.Context, chainID string, num uint64, hash string) error {
+
+func (m *mockCursorMgr) Advance(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+	hash string,
+) error {
 	m.current = num
 	return nil
 }
@@ -63,17 +78,54 @@ func (m *mockCursorMgr) SetState(ctx context.Context, c string, s cursor.State, 
 }
 
 // Stubs
-func (m *mockCursorMgr) Initialize(ctx context.Context, c string, s uint64) (*domain.Cursor, error) {
+func (m *mockCursorMgr) Initialize(
+	ctx context.Context,
+	c string,
+	s uint64,
+) (*domain.Cursor, error) {
 	return nil, nil
 }
-func (m *mockCursorMgr) Rollback(ctx context.Context, c string, b uint64, h string) error { return nil }
-func (m *mockCursorMgr) Pause(ctx context.Context, c string, r string) error              { return nil }
-func (m *mockCursorMgr) Resume(ctx context.Context, c string) error                       { return nil }
-func (m *mockCursorMgr) GetLag(ctx context.Context, c string, l uint64) (int64, error)    { return 0, nil }
+
+func (m *mockCursorMgr) Rollback(
+	ctx context.Context,
+	c string,
+	b uint64,
+	h string,
+) error {
+	return nil
+}
+
+func (m *mockCursorMgr) Pause(
+	ctx context.Context,
+	c string,
+	r string,
+) error {
+	return nil
+}
+
+func (m *mockCursorMgr) Resume(
+	ctx context.Context,
+	c string,
+) error {
+	return nil
+}
+
+func (m *mockCursorMgr) GetLag(
+	ctx context.Context,
+	c string,
+	l uint64,
+) (int64, error) {
+	return 0, nil
+}
 func (m *mockCursorMgr) SetMetadata(ctx context.Context, c, k string, v any) error {
 	return nil
 }
-func (m *mockCursorMgr) GetMetrics(c string) cursor.Metrics                        { return cursor.Metrics{} }
+
+func (m *mockCursorMgr) GetMetrics(
+	c string,
+) cursor.Metrics {
+	return cursor.Metrics{}
+}
 func (m *mockCursorMgr) SetStateChangeCallback(fn func(string, cursor.Transition)) {}
 
 type mockFilter struct {
@@ -104,9 +156,23 @@ func (m *mockEmitter) EmitBatch(ctx context.Context, events []*domain.Event) err
 	m.emitted = append(m.emitted, events...)
 	return nil
 }
-func (m *mockEmitter) Emit(ctx context.Context, event *domain.Event) error             { return nil }
-func (m *mockEmitter) EmitRevert(ctx context.Context, e *domain.Event, r string) error { return nil }
-func (m *mockEmitter) Close() error                                                    { return nil }
+
+func (m *mockEmitter) Emit(
+	ctx context.Context,
+	event *domain.Event,
+) error {
+	return nil
+}
+
+func (m *mockEmitter) EmitRevert(
+	ctx context.Context,
+	e *domain.Event,
+	r string,
+) error {
+	return nil
+}
+
+func (m *mockEmitter) Close() error { return nil }
 
 type mockBlockRepo struct {
 	saved []*domain.Block
@@ -116,7 +182,12 @@ func (m *mockBlockRepo) Save(ctx context.Context, b *domain.Block) error {
 	m.saved = append(m.saved, b)
 	return nil
 }
-func (m *mockBlockRepo) GetByNumber(ctx context.Context, c string, n uint64) (*domain.Block, error) {
+
+func (m *mockBlockRepo) GetByNumber(
+	ctx context.Context,
+	c string,
+	n uint64,
+) (*domain.Block, error) {
 	for _, b := range m.saved {
 		if b.Number == n {
 			return b, nil
@@ -126,16 +197,31 @@ func (m *mockBlockRepo) GetByNumber(ctx context.Context, c string, n uint64) (*d
 }
 func (m *mockBlockRepo) Add(ctx context.Context, b *domain.Block) error              { return nil }
 func (m *mockBlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error { return nil }
-func (m *mockBlockRepo) GetByHash(ctx context.Context, chainID, hash string) (*domain.Block, error) {
+
+func (m *mockBlockRepo) GetByHash(
+	ctx context.Context,
+	chainID, hash string,
+) (*domain.Block, error) {
 	return nil, nil
 }
 func (m *mockBlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
 	return nil, nil
 }
-func (m *mockBlockRepo) UpdateStatus(ctx context.Context, chainID string, num uint64, status domain.BlockStatus) error {
+
+func (m *mockBlockRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+	status domain.BlockStatus,
+) error {
 	return nil
 }
-func (m *mockBlockRepo) FindGaps(ctx context.Context, chainID string, from, to uint64) ([]storage.Gap, error) {
+
+func (m *mockBlockRepo) FindGaps(
+	ctx context.Context,
+	chainID string,
+	from, to uint64,
+) ([]storage.Gap, error) {
 	return nil, nil
 }
 func (m *mockBlockRepo) DeleteRange(ctx context.Context, chainID string, from, to uint64) error {

@@ -21,7 +21,11 @@ type Handler struct {
 }
 
 // NewHandler creates a new failed block handler.
-func NewHandler(repo storage.FailedBlockRepository, fetcher BackfillFetcher, strategy RetryStrategy) *Handler {
+func NewHandler(
+	repo storage.FailedBlockRepository,
+	fetcher BackfillFetcher,
+	strategy RetryStrategy,
+) *Handler {
 	return &Handler{
 		repo:     repo,
 		fetcher:  fetcher,
@@ -83,7 +87,12 @@ func (h *Handler) ProcessNext(ctx context.Context, chainID string) error {
 
 // HandleFailure is called by the main indexer loop when a block fails.
 // It creates a new FailedBlock entry.
-func (h *Handler) HandleFailure(ctx context.Context, chainID string, blockNum uint64, err error) error {
+func (h *Handler) HandleFailure(
+	ctx context.Context,
+	chainID string,
+	blockNum uint64,
+	err error,
+) error {
 	// Determine failure type string from error
 	failureType := domain.FailureTypeRPC // Default
 	// simplified logic, could be more complex mapping

@@ -40,7 +40,12 @@ func (r *mockBlockRepo) Save(ctx context.Context, block *domain.Block) error { r
 func (r *mockBlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error {
 	return nil
 }
-func (r *mockBlockRepo) GetByNumber(ctx context.Context, chainID string, num uint64) (*domain.Block, error) {
+
+func (r *mockBlockRepo) GetByNumber(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+) (*domain.Block, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if b, ok := r.blocks[num]; ok {
@@ -49,13 +54,23 @@ func (r *mockBlockRepo) GetByNumber(ctx context.Context, chainID string, num uin
 	}
 	return nil, nil
 }
-func (r *mockBlockRepo) GetByHash(ctx context.Context, chainID, hash string) (*domain.Block, error) {
+
+func (r *mockBlockRepo) GetByHash(
+	ctx context.Context,
+	chainID, hash string,
+) (*domain.Block, error) {
 	return nil, nil
 }
 func (r *mockBlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
 	return nil, nil
 }
-func (r *mockBlockRepo) UpdateStatus(ctx context.Context, chainID string, num uint64, status domain.BlockStatus) error {
+
+func (r *mockBlockRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+	status domain.BlockStatus,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if b, ok := r.blocks[num]; ok {
@@ -63,7 +78,12 @@ func (r *mockBlockRepo) UpdateStatus(ctx context.Context, chainID string, num ui
 	}
 	return nil
 }
-func (r *mockBlockRepo) FindGaps(ctx context.Context, chainID string, from, to uint64) ([]storage.Gap, error) {
+
+func (r *mockBlockRepo) FindGaps(
+	ctx context.Context,
+	chainID string,
+	from, to uint64,
+) ([]storage.Gap, error) {
 	return nil, nil
 }
 func (r *mockBlockRepo) DeleteRange(ctx context.Context, chainID string, from, to uint64) error {

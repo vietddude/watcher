@@ -80,7 +80,12 @@ func (r *CursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, e
 }
 
 // UpdateBlock updates cursor to a new block (atomic operation).
-func (r *CursorRepo) UpdateBlock(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error {
+func (r *CursorRepo) UpdateBlock(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+	blockHash string,
+) error {
 	query := `
 		UPDATE cursors 
 		SET block_number = $1, block_hash = $2, updated_at = NOW()
@@ -115,7 +120,11 @@ func (r *CursorRepo) UpdateBlock(ctx context.Context, chainID string, blockNumbe
 }
 
 // UpdateState updates cursor state.
-func (r *CursorRepo) UpdateState(ctx context.Context, chainID string, state domain.CursorState) error {
+func (r *CursorRepo) UpdateState(
+	ctx context.Context,
+	chainID string,
+	state domain.CursorState,
+) error {
 	query := `
 		UPDATE cursors 
 		SET state = $1, updated_at = NOW()
@@ -126,7 +135,12 @@ func (r *CursorRepo) UpdateState(ctx context.Context, chainID string, state doma
 }
 
 // Rollback rolls back cursor to a previous block.
-func (r *CursorRepo) Rollback(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error {
+func (r *CursorRepo) Rollback(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+	blockHash string,
+) error {
 	// Same as UpdateBlock basically, maybe update state to 'scanning' if it was something else?
 	return r.UpdateBlock(ctx, chainID, blockNumber, blockHash)
 }

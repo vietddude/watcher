@@ -62,7 +62,10 @@ func progressKey(internalCode string, start, end uint64) string {
 }
 
 // PopRange pops the next range from the queue (lowest score = oldest/smallest block).
-func (c *Client) PopRange(ctx context.Context, internalCode string) (start, end uint64, found bool, err error) {
+func (c *Client) PopRange(
+	ctx context.Context,
+	internalCode string,
+) (start, end uint64, found bool, err error) {
 	key := queueKey(internalCode)
 
 	// Get the first element (lowest score)
@@ -114,7 +117,12 @@ func (c *Client) ClearQueue(ctx context.Context, internalCode string) error {
 }
 
 // AcquireLock attempts to acquire a processing lock for a range.
-func (c *Client) AcquireLock(ctx context.Context, internalCode string, start, end uint64, ttl time.Duration) (bool, error) {
+func (c *Client) AcquireLock(
+	ctx context.Context,
+	internalCode string,
+	start, end uint64,
+	ttl time.Duration,
+) (bool, error) {
 	key := lockKey(internalCode, start, end)
 	ok, err := c.rdb.SetNX(ctx, key, "locked", ttl).Result()
 	if err != nil {
@@ -130,13 +138,22 @@ func (c *Client) ReleaseLock(ctx context.Context, internalCode string, start, en
 }
 
 // RefreshLock extends the TTL of a lock.
-func (c *Client) RefreshLock(ctx context.Context, internalCode string, start, end uint64, ttl time.Duration) error {
+func (c *Client) RefreshLock(
+	ctx context.Context,
+	internalCode string,
+	start, end uint64,
+	ttl time.Duration,
+) error {
 	key := lockKey(internalCode, start, end)
 	return c.rdb.Expire(ctx, key, ttl).Err()
 }
 
 // GetProgress gets the last processed block for a range.
-func (c *Client) GetProgress(ctx context.Context, internalCode string, start, end uint64) (uint64, error) {
+func (c *Client) GetProgress(
+	ctx context.Context,
+	internalCode string,
+	start, end uint64,
+) (uint64, error) {
 	key := progressKey(internalCode, start, end)
 	val, err := c.rdb.Get(ctx, key).Result()
 	if err == redis.Nil {
@@ -149,7 +166,12 @@ func (c *Client) GetProgress(ctx context.Context, internalCode string, start, en
 }
 
 // SetProgress sets the last processed block for a range.
-func (c *Client) SetProgress(ctx context.Context, internalCode string, start, end, current uint64, ttl time.Duration) error {
+func (c *Client) SetProgress(
+	ctx context.Context,
+	internalCode string,
+	start, end, current uint64,
+	ttl time.Duration,
+) error {
 	key := progressKey(internalCode, start, end)
 	return c.rdb.Set(ctx, key, strconv.FormatUint(current, 10), ttl).Err()
 }

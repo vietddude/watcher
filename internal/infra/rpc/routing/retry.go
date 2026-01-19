@@ -26,7 +26,13 @@ var DefaultRetryConfig = RetryConfig{
 }
 
 // CallWithRetry executes an RPC call with exponential backoff.
-func CallWithRetry(ctx context.Context, p provider.Provider, method string, params []any, config RetryConfig) (any, error) {
+func CallWithRetry(
+	ctx context.Context,
+	p provider.Provider,
+	method string,
+	params []any,
+	config RetryConfig,
+) (any, error) {
 	var lastErr error
 
 	for attempt := 0; attempt < config.MaxAttempts; attempt++ {
@@ -53,7 +59,14 @@ func CallWithRetry(ctx context.Context, p provider.Provider, method string, para
 }
 
 // CallWithRetryAndFailover tries multiple providers with retry.
-func CallWithRetryAndFailover(ctx context.Context, router Router, chainID string, method string, params []any, config RetryConfig) (any, error) {
+func CallWithRetryAndFailover(
+	ctx context.Context,
+	router Router,
+	chainID string,
+	method string,
+	params []any,
+	config RetryConfig,
+) (any, error) {
 	providers := router.GetAllProviders(chainID)
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("no providers for chain %s", chainID)

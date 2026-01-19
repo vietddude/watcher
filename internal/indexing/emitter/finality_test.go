@@ -25,7 +25,11 @@ func (m *MockEmitter) EmitBatch(ctx context.Context, events []*domain.Event) err
 	return nil
 }
 
-func (m *MockEmitter) EmitRevert(ctx context.Context, originalEvent *domain.Event, reason string) error {
+func (m *MockEmitter) EmitRevert(
+	ctx context.Context,
+	originalEvent *domain.Event,
+	reason string,
+) error {
 	return nil
 }
 

@@ -20,7 +20,11 @@ type Detector struct {
 // OnCursorGap handles a gap detected by cursor.Advance().
 // This is called when cursor returns ErrBlockGap.
 // It queues the missing blocks without making any RPC calls.
-func (d *Detector) OnCursorGap(ctx context.Context, chainID string, currentBlock, newBlock uint64) error {
+func (d *Detector) OnCursorGap(
+	ctx context.Context,
+	chainID string,
+	currentBlock, newBlock uint64,
+) error {
 	if newBlock <= currentBlock+1 {
 		return nil // No gap
 	}
@@ -35,7 +39,11 @@ func (d *Detector) OnCursorGap(ctx context.Context, chainID string, currentBlock
 
 // ScanDatabase finds gaps in stored blocks using BlockRepository.FindGaps().
 // This is a periodic scan that doesn't make RPC calls.
-func (d *Detector) ScanDatabase(ctx context.Context, chainID string, fromBlock, toBlock uint64) ([]Gap, error) {
+func (d *Detector) ScanDatabase(
+	ctx context.Context,
+	chainID string,
+	fromBlock, toBlock uint64,
+) ([]Gap, error) {
 	dbGaps, err := d.blockRepo.FindGaps(ctx, chainID, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find gaps: %w", err)

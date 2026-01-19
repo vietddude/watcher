@@ -22,19 +22,39 @@ func (r *mockBlockRepo) Save(ctx context.Context, block *domain.Block) error { r
 func (r *mockBlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error {
 	return nil
 }
-func (r *mockBlockRepo) GetByNumber(ctx context.Context, chainID string, num uint64) (*domain.Block, error) {
+
+func (r *mockBlockRepo) GetByNumber(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+) (*domain.Block, error) {
 	return nil, nil
 }
-func (r *mockBlockRepo) GetByHash(ctx context.Context, chainID, hash string) (*domain.Block, error) {
+
+func (r *mockBlockRepo) GetByHash(
+	ctx context.Context,
+	chainID, hash string,
+) (*domain.Block, error) {
 	return nil, nil
 }
 func (r *mockBlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
 	return nil, nil
 }
-func (r *mockBlockRepo) UpdateStatus(ctx context.Context, chainID string, num uint64, status domain.BlockStatus) error {
+
+func (r *mockBlockRepo) UpdateStatus(
+	ctx context.Context,
+	chainID string,
+	num uint64,
+	status domain.BlockStatus,
+) error {
 	return nil
 }
-func (r *mockBlockRepo) FindGaps(ctx context.Context, chainID string, from, to uint64) ([]storage.Gap, error) {
+
+func (r *mockBlockRepo) FindGaps(
+	ctx context.Context,
+	chainID string,
+	from, to uint64,
+) ([]storage.Gap, error) {
 	result := make([]storage.Gap, len(r.gaps))
 	for i, g := range r.gaps {
 		result[i] = storage.Gap{FromBlock: g.FromBlock, ToBlock: g.ToBlock}
@@ -60,7 +80,10 @@ func (r *mockMissingRepo) Add(ctx context.Context, m *domain.MissingBlock) error
 	return nil
 }
 
-func (r *mockMissingRepo) GetNext(ctx context.Context, chainID string) (*domain.MissingBlock, error) {
+func (r *mockMissingRepo) GetNext(
+	ctx context.Context,
+	chainID string,
+) (*domain.MissingBlock, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, b := range r.blocks {
@@ -104,7 +127,10 @@ func (r *mockMissingRepo) MarkFailed(ctx context.Context, id string, msg string)
 	return nil
 }
 
-func (r *mockMissingRepo) GetPending(ctx context.Context, chainID string) ([]*domain.MissingBlock, error) {
+func (r *mockMissingRepo) GetPending(
+	ctx context.Context,
+	chainID string,
+) ([]*domain.MissingBlock, error) {
 	return nil, nil
 }
 

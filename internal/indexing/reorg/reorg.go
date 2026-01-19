@@ -48,7 +48,11 @@ func NewDetector(config Config, blockRepo storage.BlockRepository) *Detector {
 }
 
 // NewHandler creates a new reorg handler.
-func NewHandler(blockRepo storage.BlockRepository, txRepo storage.TransactionRepository, cursorMgr cursor.Manager) *Handler {
+func NewHandler(
+	blockRepo storage.BlockRepository,
+	txRepo storage.TransactionRepository,
+	cursorMgr cursor.Manager,
+) *Handler {
 	return &Handler{
 		blockRepo: blockRepo,
 		txRepo:    txRepo,

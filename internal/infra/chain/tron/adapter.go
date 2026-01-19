@@ -103,7 +103,10 @@ func (a *TronAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*do
 }
 
 // GetTransactions returns all transactions in a block.
-func (a *TronAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+func (a *TronAdapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	if block.TxCount == 0 {
 		return []*domain.Transaction{}, nil
 	}
@@ -149,7 +152,11 @@ func (a *TronAdapter) GetTransactions(ctx context.Context, block *domain.Block) 
 
 // FilterTransactions filters transactions by watched addresses.
 // Uses bloom filter for fast rejection, then exact match verification.
-func (a *TronAdapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error) {
+func (a *TronAdapter) FilterTransactions(
+	ctx context.Context,
+	txs []*domain.Transaction,
+	addresses []string,
+) ([]*domain.Transaction, error) {
 	// Build/rebuild bloom filter if needed
 	if !a.bloomFilter.IsInitialized() {
 		a.bloomFilter.Build(addresses)
@@ -180,7 +187,11 @@ func (a *TronAdapter) FilterTransactions(ctx context.Context, txs []*domain.Tran
 }
 
 // VerifyBlockHash verifies that a block number has the expected hash.
-func (a *TronAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+func (a *TronAdapter) VerifyBlockHash(
+	ctx context.Context,
+	blockNumber uint64,
+	expectedHash string,
+) (bool, error) {
 	block, err := a.GetBlock(ctx, blockNumber)
 	if err != nil {
 		return false, err
@@ -241,7 +252,10 @@ func (a *TronAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transact
 
 // GetTransactionLogs fetches event logs for a transaction.
 // Useful for TRC20 Transfer events.
-func (a *TronAdapter) GetTransactionLogs(ctx context.Context, txHash string) ([]map[string]any, error) {
+func (a *TronAdapter) GetTransactionLogs(
+	ctx context.Context,
+	txHash string,
+) ([]map[string]any, error) {
 	result, err := a.rpcProvider.Call(ctx, "gettransactioninfobyid", []any{txHash})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction info: %w", err)
@@ -316,7 +330,11 @@ func (a *TronAdapter) parseBlock(blockData map[string]any) (*domain.Block, error
 }
 
 // parseTransaction parses Tron transaction data into domain.Transaction.
-func (a *TronAdapter) parseTransaction(txData map[string]any, block *domain.Block, txIndex int) (*domain.Transaction, error) {
+func (a *TronAdapter) parseTransaction(
+	txData map[string]any,
+	block *domain.Block,
+	txIndex int,
+) (*domain.Transaction, error) {
 	txID, ok := txData["txID"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid txID")

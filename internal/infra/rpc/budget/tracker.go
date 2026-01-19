@@ -251,7 +251,10 @@ func (bt *DefaultBudgetTracker) Reset() {
 }
 
 // SetProviderAllocation sets the daily allocation for a specific provider.
-func (bt *DefaultBudgetTracker) SetProviderAllocation(chainID, providerName string, allocation int) {
+func (bt *DefaultBudgetTracker) SetProviderAllocation(
+	chainID, providerName string,
+	allocation int,
+) {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 

@@ -172,7 +172,11 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		}
 
 		coordinator := rpc.NewCoordinator(router, budgetTracker)
-		coordinatedProvider := rpc.NewCoordinatedProvider(chainID, chainCfg.InternalCode, coordinator)
+		coordinatedProvider := rpc.NewCoordinatedProvider(
+			chainID,
+			chainCfg.InternalCode,
+			coordinator,
+		)
 
 		// Use EVM adapter by default with CoordinatedProvider
 		var adapter chain.Adapter

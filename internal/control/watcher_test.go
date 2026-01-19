@@ -17,7 +17,9 @@ func TestWatcher_Lifecycle(t *testing.T) {
 				ChainID:        "test-chain-1",
 				FinalityBlocks: 5,
 				ScanInterval:   100 * time.Millisecond,
-				Providers:      []config.ProviderConfig{{Name: "test", URL: "http://localhost:8545"}},
+				Providers: []config.ProviderConfig{
+					{Name: "test", URL: "http://localhost:8545"},
+				},
 			},
 		},
 	}
@@ -69,8 +71,16 @@ func TestWatcher_MultiChain(t *testing.T) {
 	cfg := Config{
 		Port: 0,
 		Chains: []config.ChainConfig{
-			{ChainID: "chain-1", FinalityBlocks: 1, Providers: []config.ProviderConfig{{Name: "p1", URL: "http://loc1"}}},
-			{ChainID: "chain-2", FinalityBlocks: 1, Providers: []config.ProviderConfig{{Name: "p2", URL: "http://loc2"}}},
+			{
+				ChainID:        "chain-1",
+				FinalityBlocks: 1,
+				Providers:      []config.ProviderConfig{{Name: "p1", URL: "http://loc1"}},
+			},
+			{
+				ChainID:        "chain-2",
+				FinalityBlocks: 1,
+				Providers:      []config.ProviderConfig{{Name: "p2", URL: "http://loc2"}},
+			},
 		},
 	}
 

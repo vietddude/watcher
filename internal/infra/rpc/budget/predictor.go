@@ -94,7 +94,10 @@ func (p *QuotaPredictor) GetRequestRate(providerName string) float64 {
 }
 
 // PredictTimeToExhaustion predicts how long until quota is exhausted.
-func (p *QuotaPredictor) PredictTimeToExhaustion(providerName string, remainingQuota int) time.Duration {
+func (p *QuotaPredictor) PredictTimeToExhaustion(
+	providerName string,
+	remainingQuota int,
+) time.Duration {
 	rate := p.GetRequestRate(providerName)
 
 	if rate <= 0 || remainingQuota <= 0 {
@@ -106,7 +109,11 @@ func (p *QuotaPredictor) PredictTimeToExhaustion(providerName string, remainingQ
 }
 
 // ShouldRotatePreemptively checks if rotation should happen before exhaustion.
-func (p *QuotaPredictor) ShouldRotatePreemptively(providerName string, remainingQuota int, threshold time.Duration) bool {
+func (p *QuotaPredictor) ShouldRotatePreemptively(
+	providerName string,
+	remainingQuota int,
+	threshold time.Duration,
+) bool {
 	timeToExhaust := p.PredictTimeToExhaustion(providerName, remainingQuota)
 
 	if timeToExhaust == 0 {
@@ -148,7 +155,10 @@ func (p *QuotaPredictor) GetTrend(providerName string) float64 {
 }
 
 // GetPredictionStats returns prediction statistics for a provider.
-func (p *QuotaPredictor) GetPredictionStats(providerName string, remainingQuota int) PredictionStats {
+func (p *QuotaPredictor) GetPredictionStats(
+	providerName string,
+	remainingQuota int,
+) PredictionStats {
 	return PredictionStats{
 		RequestRatePerMin: p.GetRequestRate(providerName),
 		TimeToExhaustion:  p.PredictTimeToExhaustion(providerName, remainingQuota),

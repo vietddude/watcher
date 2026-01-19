@@ -149,7 +149,10 @@ func (p *HTTPProvider) Call(ctx context.Context, method string, params []any) (a
 }
 
 // BatchCall makes multiple RPC calls in one request.
-func (p *HTTPProvider) BatchCall(ctx context.Context, requests []BatchRequest) ([]BatchResponse, error) {
+func (p *HTTPProvider) BatchCall(
+	ctx context.Context,
+	requests []BatchRequest,
+) ([]BatchResponse, error) {
 	start := time.Now()
 
 	batchReq := make([]map[string]any, len(requests))

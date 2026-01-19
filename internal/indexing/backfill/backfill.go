@@ -38,7 +38,10 @@ type Gap struct {
 type BlockFetcher func(chainID string, blockNum uint64) error
 
 // NewDetector creates a new gap detector.
-func NewDetector(blockRepo storage.BlockRepository, missingRepo storage.MissingBlockRepository) *Detector {
+func NewDetector(
+	blockRepo storage.BlockRepository,
+	missingRepo storage.MissingBlockRepository,
+) *Detector {
 	return &Detector{
 		blockRepo:   blockRepo,
 		missingRepo: missingRepo,
@@ -46,7 +49,11 @@ func NewDetector(blockRepo storage.BlockRepository, missingRepo storage.MissingB
 }
 
 // NewProcessor creates a new processor with the given configuration.
-func NewProcessor(config ProcessorConfig, missingRepo storage.MissingBlockRepository, fetcher BlockFetcher) *Processor {
+func NewProcessor(
+	config ProcessorConfig,
+	missingRepo storage.MissingBlockRepository,
+	fetcher BlockFetcher,
+) *Processor {
 	return &Processor{
 		config:      config,
 		missingRepo: missingRepo,
