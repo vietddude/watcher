@@ -1,11 +1,22 @@
+-- +goose Up
+-- +goose StatementBegin
+SELECT 'up SQL query';
+
+-- Safe reset for init schema (dev env)
+DROP TABLE IF EXISTS failed_blocks CASCADE;
+DROP TABLE IF EXISTS missing_blocks CASCADE;
+DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS blocks CASCADE;
+DROP TABLE IF EXISTS cursors CASCADE;
+
 -- Enable UUID extension if needed (though we use string IDs mostly)
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Cursors Table
 CREATE TABLE cursors (
     chain_id VARCHAR(64) PRIMARY KEY,
-    current_block BIGINT NOT NULL DEFAULT 0,
-    current_block_hash VARCHAR(128) NOT NULL DEFAULT '',
+    block_number BIGINT NOT NULL DEFAULT 0,
+    block_hash VARCHAR(128) NOT NULL DEFAULT '',
     state VARCHAR(32) NOT NULL DEFAULT 'scanning', -- scanning, backfill, reorg, paused
     metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -15,20 +26,20 @@ CREATE TABLE cursors (
 -- Blocks Table
 CREATE TABLE blocks (
     chain_id VARCHAR(64) NOT NULL,
-    number BIGINT NOT NULL,
-    hash VARCHAR(128) NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_hash VARCHAR(128) NOT NULL,
     parent_hash VARCHAR(128) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    block_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     tx_count INT NOT NULL DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'finalized', -- pending, finalized, orphaned
     metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    PRIMARY KEY (chain_id, number)
+    PRIMARY KEY (chain_id, block_number)
 );
 
-CREATE INDEX idx_blocks_hash ON blocks(chain_id, hash);
-CREATE INDEX idx_blocks_timestamp ON blocks(chain_id, timestamp);
+CREATE INDEX idx_blocks_hash ON blocks(chain_id, block_hash);
+CREATE INDEX idx_blocks_timestamp ON blocks(chain_id, block_timestamp);
 
 -- Transactions Table
 CREATE TABLE transactions (
@@ -37,8 +48,8 @@ CREATE TABLE transactions (
     block_number BIGINT NOT NULL,
     block_hash VARCHAR(128) NOT NULL,
     tx_index INT NOT NULL,
-    from_addr VARCHAR(128) NOT NULL,
-    to_addr VARCHAR(128) DEFAULT '',
+    from_address VARCHAR(128) NOT NULL,
+    to_address VARCHAR(128) DEFAULT '',
     value VARCHAR(128) DEFAULT '0', -- Store as string for big integers
     gas_used BIGINT DEFAULT 0,
     gas_price VARCHAR(128) DEFAULT '0',
@@ -51,8 +62,8 @@ CREATE TABLE transactions (
 );
 
 CREATE INDEX idx_transactions_block ON transactions(chain_id, block_number);
-CREATE INDEX idx_transactions_from ON transactions(chain_id, from_addr);
-CREATE INDEX idx_transactions_to ON transactions(chain_id, to_addr);
+CREATE INDEX idx_transactions_from ON transactions(chain_id, from_address);
+CREATE INDEX idx_transactions_to ON transactions(chain_id, to_address);
 
 -- Missing Blocks Queue
 CREATE TABLE missing_blocks (
@@ -62,7 +73,7 @@ CREATE TABLE missing_blocks (
     to_block BIGINT NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending, processing, completed, failed
     attempts INT NOT NULL DEFAULT 0,
-    last_error TEXT,
+    error_msg TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -74,7 +85,7 @@ CREATE TABLE failed_blocks (
     id SERIAL PRIMARY KEY,
     chain_id VARCHAR(64) NOT NULL,
     block_number BIGINT NOT NULL,
-    error TEXT,
+    error_msg TEXT,
     retry_count INT NOT NULL DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending, resolved, abandoned
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -82,3 +93,28 @@ CREATE TABLE failed_blocks (
 );
 
 CREATE INDEX idx_failed_blocks_status ON failed_blocks(chain_id, status);
+
+-- Wallet Addresses Table
+CREATE TABLE wallet_addresses (
+    id SERIAL PRIMARY KEY,
+    address VARCHAR(128) NOT NULL,
+    network_type VARCHAR(64) NOT NULL,
+    standard VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_wallet_addresses_address ON wallet_addresses(address);
+
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+SELECT 'down SQL query';
+DROP TABLE IF EXISTS failed_blocks;
+DROP TABLE IF EXISTS missing_blocks;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS blocks;
+DROP TABLE IF EXISTS cursors;
+DROP TABLE IF EXISTS wallet_addresses;
+-- +goose StatementEnd

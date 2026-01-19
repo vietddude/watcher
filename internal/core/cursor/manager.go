@@ -113,6 +113,19 @@ func (m *DefaultManager) Advance(ctx context.Context, chainID string, blockNumbe
 
 	// Check for gap (block must be exactly current + 1)
 	expectedBlock := cursor.CurrentBlock + 1
+
+	// Check for idempotency (duplicate delivery / re-process)
+	if blockNumber == cursor.CurrentBlock {
+		if blockHash == cursor.CurrentBlockHash {
+			// Already processed this exact block. Treat as success.
+			return nil
+		}
+		// If hash mismatch, it might be a reorganization or error.
+		// For now, fail with specific error so we can distinguish it.
+		return fmt.Errorf("idempotency check failed: cursor at %d with hash %s, got same block %d with hash %s",
+			cursor.CurrentBlock, cursor.CurrentBlockHash, blockNumber, blockHash)
+	}
+
 	if blockNumber != expectedBlock {
 		return fmt.Errorf("%w: expected block %d, got %d", ErrBlockGap, expectedBlock, blockNumber)
 	}

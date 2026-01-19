@@ -1,5 +1,0 @@
-DROP TABLE IF EXISTS failed_blocks;
-DROP TABLE IF EXISTS missing_blocks;
-DROP TABLE IF EXISTS transactions;
-DROP TABLE IF EXISTS blocks;
-DROP TABLE IF EXISTS cursors;

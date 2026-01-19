@@ -78,6 +78,10 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	// 1. Get current position
 	cursor, err := p.cfg.Cursor.Get(ctx, p.cfg.ChainID)
 	if err != nil {
+		return fmt.Errorf("failed to get cursor: %w", err)
+	}
+
+	if cursor == nil {
 		// Cursor not found - initialize at block 0 (or latest - finality in production)
 		slog.Info("Cursor not found, initializing...")
 		latestBlock, latestErr := p.cfg.ChainAdapter.GetLatestBlock(ctx)
