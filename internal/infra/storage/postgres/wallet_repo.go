@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
 // WalletRepo implements storage.WalletRepository using PostgreSQL.
@@ -19,42 +20,15 @@ func NewWalletRepo(db *DB) *WalletRepo {
 	return &WalletRepo{db: db}
 }
 
-type walletModel struct {
-	ID        uint64    `db:"id"`
-	Address   string    `db:"address"`
-	Network   string    `db:"network_type"`
-	Standard  string    `db:"standard"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-}
-
-func (m *walletModel) toDomain() *domain.WalletAddress {
-	return &domain.WalletAddress{
-		ID:        m.ID,
-		Address:   m.Address,
-		Type:      domain.NetworkType(m.Network),
-		Standard:  domain.AddressStandard(m.Standard),
-		CreatedAt: m.CreatedAt,
-		UpdatedAt: m.UpdatedAt,
-	}
-}
-
 // Save saves a wallet address to the database.
 func (r *WalletRepo) Save(ctx context.Context, wallet *domain.WalletAddress) error {
-	query := `
-		INSERT INTO wallet_addresses (address, network_type, standard, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
-		ON CONFLICT (address) DO UPDATE SET
-			network_type = EXCLUDED.network_type,
-			standard = EXCLUDED.standard,
-			updated_at = NOW()
-	`
-
-	_, err := r.db.ExecContext(ctx, query,
-		wallet.Address,
-		string(wallet.Type),
-		string(wallet.Standard),
-	)
+	err := r.db.Queries.CreateWalletAddress(ctx, sqlc.CreateWalletAddressParams{
+		Address:     wallet.Address,
+		NetworkType: string(wallet.Type),
+		Standard:    string(wallet.Standard),
+		CreatedAt:   sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+		UpdatedAt:   sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to save wallet address: %w", err)
 	}
@@ -66,14 +40,7 @@ func (r *WalletRepo) GetByAddress(
 	ctx context.Context,
 	address string,
 ) (*domain.WalletAddress, error) {
-	query := `
-		SELECT id, address, network_type, standard, created_at, updated_at
-		FROM wallet_addresses
-		WHERE address = $1
-	`
-
-	var model walletModel
-	err := r.db.GetContext(ctx, &model, query, address)
+	row, err := r.db.Queries.GetWalletAddress(ctx, address)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -81,25 +48,33 @@ func (r *WalletRepo) GetByAddress(
 		return nil, fmt.Errorf("failed to get wallet address: %w", err)
 	}
 
-	return model.toDomain(), nil
+	return &domain.WalletAddress{
+		ID:        uint64(row.ID),
+		Address:   row.Address,
+		Type:      domain.NetworkType(row.NetworkType),
+		Standard:  domain.AddressStandard(row.Standard),
+		CreatedAt: uint64(row.CreatedAt.Int64),
+		UpdatedAt: uint64(row.UpdatedAt.Int64),
+	}, nil
 }
 
 // GetAll retrieves all wallet addresses.
 func (r *WalletRepo) GetAll(ctx context.Context) ([]*domain.WalletAddress, error) {
-	query := `
-		SELECT id, address, network_type, standard, created_at, updated_at
-		FROM wallet_addresses
-	`
-
-	var models []walletModel
-	err := r.db.SelectContext(ctx, &models, query)
+	rows, err := r.db.Queries.ListWalletAddresses(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all wallet addresses: %w", err)
 	}
 
 	var wallets []*domain.WalletAddress
-	for _, m := range models {
-		wallets = append(wallets, m.toDomain())
+	for _, row := range rows {
+		wallets = append(wallets, &domain.WalletAddress{
+			ID:        uint64(row.ID),
+			Address:   row.Address,
+			Type:      domain.NetworkType(row.NetworkType),
+			Standard:  domain.AddressStandard(row.Standard),
+			CreatedAt: uint64(row.CreatedAt.Int64),
+			UpdatedAt: uint64(row.UpdatedAt.Int64),
+		})
 	}
 	return wallets, nil
 }

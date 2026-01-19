@@ -9,6 +9,7 @@ import (
 	"github.com/vietddude/watcher/internal/core/config"
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/core/worker"
 	"github.com/vietddude/watcher/internal/indexing/backfill"
 	"github.com/vietddude/watcher/internal/indexing/emitter"
 	"github.com/vietddude/watcher/internal/indexing/filter"
@@ -35,6 +36,7 @@ type Watcher struct {
 	indexers      map[string]indexer.Indexer
 	backfillers   map[string]*backfill.Processor
 	rescanWorkers map[string]*rescan.Worker
+	pruners       map[string]*worker.Pruner
 	healthMon     *health.Monitor
 	healthServer  *health.Server
 	store         *memory.MemoryStorage
@@ -83,7 +85,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 			return nil, err
 		}
 		// Assuming migrations are in "migrations" folder relative to CWD
-		if err := goose.Up(db.DB.DB, "migrations"); err != nil {
+		if err := goose.Up(db.DB, "migrations"); err != nil {
 			return nil, fmt.Errorf("failed to migrate db: %w", err)
 		}
 
@@ -212,6 +214,8 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 				if block == nil {
 					return fmt.Errorf("block %d not found", blockNum)
 				}
+				// Ensure ChainID is set
+				block.ChainID = chainID
 				return blockRepo.Save(context.Background(), block)
 			},
 		)
@@ -260,6 +264,15 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	// 7. Initialize Redis and Rescan Workers
 	var redisClient *redisclient.Client
 	rescanWorkers := make(map[string]*rescan.Worker)
+	pruners := make(map[string]*worker.Pruner)
+
+	// Initialize Pruners
+	for _, chainCfg := range cfg.Chains {
+		if chainCfg.RetentionPeriod > 0 {
+			pruner := worker.NewPruner(chainCfg, blockRepo, txRepo)
+			pruners[chainCfg.ChainID] = pruner
+		}
+	}
 
 	if cfg.Redis.URL != "" && cfg.RescanRangesEnabled {
 		var err error
@@ -338,6 +351,12 @@ func (w *Watcher) Start(ctx context.Context) error {
 				w.log.Error("Rescan worker failed", "chain", code, "error", err)
 			}
 		}(code, worker)
+	}
+
+	// Start Pruners
+	for id, p := range w.pruners {
+		w.log.Info("Starting pruner", "chain", id)
+		go p.Start(ctx)
 	}
 
 	return nil

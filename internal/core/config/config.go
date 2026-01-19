@@ -29,13 +29,14 @@ type LoggingConfig struct {
 
 // ChainConfig holds settings for a specific blockchain.
 type ChainConfig struct {
-	ChainID        string           `yaml:"id"              mapstructure:"id"`
-	Type           string           `yaml:"type"            mapstructure:"type"`          // e.g., "evm", "bitcoin"
-	InternalCode   string           `yaml:"internal_code"   mapstructure:"internal_code"` // e.g., "ETHEREUM_MAINNET"
-	FinalityBlocks uint64           `yaml:"finality_blocks" mapstructure:"finality_blocks"`
-	ScanInterval   time.Duration    `yaml:"scan_interval"   mapstructure:"scan_interval"`
-	RescanRanges   bool             `yaml:"rescan_ranges"   mapstructure:"rescan_ranges"` // Enable rescan worker
-	Providers      []ProviderConfig `yaml:"providers"       mapstructure:"providers"`
+	ChainID         string           `yaml:"id"               mapstructure:"id"`
+	Type            string           `yaml:"type"             mapstructure:"type"`          // e.g., "evm", "bitcoin"
+	InternalCode    string           `yaml:"internal_code"    mapstructure:"internal_code"` // e.g., "ETHEREUM_MAINNET"
+	FinalityBlocks  uint64           `yaml:"finality_blocks"  mapstructure:"finality_blocks"`
+	ScanInterval    time.Duration    `yaml:"scan_interval"    mapstructure:"scan_interval"`
+	RetentionPeriod time.Duration    `yaml:"retention_period" mapstructure:"retention_period"` // 0 = infinite
+	RescanRanges    bool             `yaml:"rescan_ranges"    mapstructure:"rescan_ranges"`    // Enable rescan worker
+	Providers       []ProviderConfig `yaml:"providers"        mapstructure:"providers"`
 }
 
 // ProviderConfig holds settings for an RPC provider.

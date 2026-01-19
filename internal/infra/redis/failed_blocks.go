@@ -108,7 +108,7 @@ func (r *FailedBlockRepo) IncrementRetry(ctx context.Context, id string) error {
 
 	// Update
 	fb.RetryCount++
-	fb.LastAttempt = time.Now()
+	fb.LastAttempt = uint64(time.Now().Unix())
 
 	// Save
 	newData, err := json.Marshal(fb)

@@ -3,7 +3,6 @@ package tron
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc"
@@ -108,7 +107,7 @@ func TestTronAdapter_ParseTransaction_TransferContract(t *testing.T) {
 	block := &domain.Block{
 		Number:    62345555,
 		Hash:      "0000000003abc123",
-		Timestamp: time.Unix(1700000000, 0),
+		Timestamp: 1700000000,
 	}
 
 	txData := map[string]any{

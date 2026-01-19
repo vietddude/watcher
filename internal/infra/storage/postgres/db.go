@@ -2,11 +2,13 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+
+	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
 // Config holds PostgreSQL connection configuration.
@@ -18,14 +20,15 @@ type Config struct {
 
 // DB wraps the PostgreSQL connection.
 type DB struct {
-	*sqlx.DB
+	*sql.DB
+	Queries *sqlc.Queries
 }
 
 // NewDB creates a new database connection.
 func NewDB(ctx context.Context, cfg Config) (*DB, error) {
-	db, err := sqlx.ConnectContext(ctx, "postgres", cfg.URL)
+	db, err := sql.Open("postgres", cfg.URL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Set pool configuration
@@ -50,7 +53,10 @@ func NewDB(ctx context.Context, cfg Config) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &DB{DB: db}, nil
+	return &DB{
+		DB:      db,
+		Queries: sqlc.New(db),
+	}, nil
 }
 
 // Health checks if the database is healthy.

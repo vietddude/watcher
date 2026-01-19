@@ -172,7 +172,12 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		label,
 		targetBlockNum,
 		"hash",
-		block.Hash[:16]+"...",
+		func() string {
+			if len(block.Hash) > 16 {
+				return block.Hash[:16] + "..."
+			}
+			return block.Hash
+		}(),
 		"txs",
 		len(txs),
 	)
@@ -222,7 +227,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 			ChainID:     p.cfg.ChainID,
 			BlockNumber: block.Number,
 			Transaction: tx,
-			EmittedAt:   time.Now(),
+			EmittedAt:   uint64(time.Now().Unix()),
 		})
 	}
 
@@ -245,8 +250,13 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	}
 
 	// 7. Persist Data
+	block.ChainID = p.cfg.ChainID // Ensure ChainID matches pipeline config
 	if err := p.cfg.BlockRepo.Save(ctx, block); err != nil {
 		return p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
+	}
+	// Mark as processed
+	if err := p.cfg.BlockRepo.UpdateStatus(ctx, p.cfg.ChainID, block.Number, domain.BlockStatusProcessed); err != nil {
+		slog.Warn("Failed to update block status", "block", block.Number, "error", err)
 	}
 	// TODO: Save Transactions (Batch)
 

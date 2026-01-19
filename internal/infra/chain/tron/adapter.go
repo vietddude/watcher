@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"time"
 
 	logger "log/slog"
 
@@ -320,7 +319,7 @@ func (a *TronAdapter) parseBlock(blockData map[string]any) (*domain.Block, error
 		Number:     uint64(number),
 		Hash:       blockID,
 		ParentHash: parentHash,
-		Timestamp:  time.UnixMilli(int64(timestamp)),
+		Timestamp:  uint64(timestamp) / 1000,
 		TxCount:    txCount,
 		Status:     domain.BlockStatusPending,
 		Metadata: map[string]any{

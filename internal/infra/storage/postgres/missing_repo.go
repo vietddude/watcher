@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
 // MissingBlockRepo implements storage.MissingBlockRepository using PostgreSQL.
@@ -19,24 +21,17 @@ func NewMissingBlockRepo(db *DB) *MissingBlockRepo {
 
 // Add adds a missing block range.
 func (r *MissingBlockRepo) Add(ctx context.Context, missing *domain.MissingBlock) error {
-	query := `
-		INSERT INTO missing_blocks (chain_id, from_block, to_block, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, NOW(), NOW())
-	`
-	// Explicitly cast to avoid type issues if necessary, but string(status) should work
 	status := string(missing.Status)
 	if status == "" {
 		status = "pending"
 	}
 
-	_, err := r.db.ExecContext(
-		ctx,
-		query,
-		missing.ChainID,
-		missing.FromBlock,
-		missing.ToBlock,
-		status,
-	)
+	err := r.db.Queries.CreateMissingBlock(ctx, sqlc.CreateMissingBlockParams{
+		ChainID:   missing.ChainID,
+		FromBlock: int64(missing.FromBlock),
+		ToBlock:   int64(missing.ToBlock),
+		Status:    status,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to add missing range: %w", err)
 	}
@@ -48,80 +43,73 @@ func (r *MissingBlockRepo) GetNext(
 	ctx context.Context,
 	chainID string,
 ) (*domain.MissingBlock, error) {
-	query := `
-		SELECT id, chain_id, from_block, to_block, status, created_at, updated_at
-		FROM missing_blocks
-		WHERE chain_id = $1 AND status = 'pending'
-		ORDER BY from_block ASC
-		LIMIT 1
-	`
-	var row struct {
-		ID        string `db:"id"`
-		ChainID   string `db:"chain_id"`
-		FromBlock uint64 `db:"from_block"`
-		ToBlock   uint64 `db:"to_block"`
-		Status    string `db:"status"`
-	}
-
-	err := r.db.GetContext(ctx, &row, query, chainID)
-	// Return error is okay, or nil if no rows. Adapter expects pointer.
-	if err != nil {
+	row, err := r.db.Queries.GetNextMissingBlock(ctx, chainID)
+	if err == sql.ErrNoRows {
 		return nil, nil // Assuming no rows means no work
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get next missing block: %w", err)
 	}
 
 	return &domain.MissingBlock{
-		ID:        row.ID,
+		ID:        fmt.Sprintf("%d", row.ID), // ID is int32 in DB/sqlc, string in domain?
 		ChainID:   row.ChainID,
-		FromBlock: row.FromBlock,
-		ToBlock:   row.ToBlock,
+		FromBlock: uint64(row.FromBlock),
+		ToBlock:   uint64(row.ToBlock),
 		Status:    domain.MissingBlockStatus(row.Status),
+		// CreatedAt: row.CreatedAt.Time, // Domain MissingBlock has CreatedAt
+		// But Wait, domain MissingBlock definition:
+		// ID string
+		// ...
+		// LastAttempt time.Time
+		// Priority int
+		// CreatedAt time.Time
 	}, nil
 }
 
 // MarkProcessing marks a range as being processed.
 func (r *MissingBlockRepo) MarkProcessing(ctx context.Context, id string) error {
-	query := `UPDATE missing_blocks SET status = 'processing', updated_at = NOW() WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+	// ID is string in domain, int32 in DB/sqlc. Need conversion.
+	var intID int32
+	_, err := fmt.Sscanf(id, "%d", &intID)
+	if err != nil {
+		return fmt.Errorf("invalid id format: %w", err)
+	}
+	err = r.db.Queries.MarkMissingBlockProcessing(ctx, intID)
 	return err
 }
 
 // MarkCompleted marks a range as completed.
 func (r *MissingBlockRepo) MarkCompleted(ctx context.Context, id string) error {
-	// Mark status as completed
-	query := `UPDATE missing_blocks SET status = 'completed', updated_at = NOW() WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+	var intID int32
+	_, err := fmt.Sscanf(id, "%d", &intID)
+	if err != nil {
+		return fmt.Errorf("invalid id format: %w", err)
+	}
+	err = r.db.Queries.MarkMissingBlockCompleted(ctx, intID)
 	return err
 }
 
 // MarkFailed marks a range as failed.
 func (r *MissingBlockRepo) MarkFailed(ctx context.Context, id string, errorMsg string) error {
-	query := `UPDATE missing_blocks SET status = 'failed', error_msg = $2, updated_at = NOW() WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id, errorMsg)
+	var intID int32
+	_, err := fmt.Sscanf(id, "%d", &intID)
+	if err != nil {
+		return fmt.Errorf("invalid id format: %w", err)
+	}
+	err = r.db.Queries.MarkMissingBlockFailed(ctx, sqlc.MarkMissingBlockFailedParams{
+		ID:       intID,
+		ErrorMsg: sql.NullString{String: errorMsg, Valid: errorMsg != ""},
+	})
 	return err
 }
 
-// GetPending retrieves all pending missing blocks (up to a reasonable limit?).
+// GetPending retrieves all pending missing blocks.
 func (r *MissingBlockRepo) GetPending(
 	ctx context.Context,
 	chainID string,
 ) ([]*domain.MissingBlock, error) {
-	// Interface doesn't specify limit, but let's limit to avoid massive query
-	query := `
-		SELECT id, chain_id, from_block, to_block, status
-		FROM missing_blocks
-		WHERE chain_id = $1 AND status = 'pending'
-		ORDER BY from_block ASC
-		LIMIT 1000
-	`
-
-	var rows []struct {
-		ID        string `db:"id"`
-		ChainID   string `db:"chain_id"`
-		FromBlock uint64 `db:"from_block"`
-		ToBlock   uint64 `db:"to_block"`
-		Status    string `db:"status"`
-	}
-	err := r.db.SelectContext(ctx, &rows, query, chainID)
+	rows, err := r.db.Queries.GetPendingMissingBlocks(ctx, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending ranges: %w", err)
 	}
@@ -129,27 +117,21 @@ func (r *MissingBlockRepo) GetPending(
 	var ranges []*domain.MissingBlock
 	for _, row := range rows {
 		ranges = append(ranges, &domain.MissingBlock{
-			ID:        row.ID,
+			ID:        fmt.Sprintf("%d", row.ID),
 			ChainID:   row.ChainID,
-			FromBlock: row.FromBlock,
-			ToBlock:   row.ToBlock,
+			FromBlock: uint64(row.FromBlock),
+			ToBlock:   uint64(row.ToBlock),
 			Status:    domain.MissingBlockStatus(row.Status),
 		})
 	}
 	return ranges, nil
 }
 
-// Count returns the count of missing blocks (ranges, actually).
+// Count returns the count of missing blocks.
 func (r *MissingBlockRepo) Count(ctx context.Context, chainID string) (int, error) {
-	query := `
-		SELECT COUNT(*) 
-		FROM missing_blocks 
-		WHERE chain_id = $1 AND status = 'pending'
-	`
-	var count int
-	err := r.db.GetContext(ctx, &count, query, chainID)
+	count, err := r.db.Queries.CountPendingMissingBlocks(ctx, chainID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count missing ranges: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }

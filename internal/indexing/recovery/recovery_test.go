@@ -144,7 +144,7 @@ func TestHandler_ProcessNext_Success(t *testing.T) {
 		ID:          "fail-1",
 		BlockNumber: 100,
 		RetryCount:  0,
-		LastAttempt: time.Now().Add(-1 * time.Hour),
+		LastAttempt: uint64(time.Now().Add(-1 * time.Hour).Unix()),
 	})
 
 	fetcher := func(ctx context.Context, chainID string, blockNum uint64) error {
@@ -171,7 +171,7 @@ func TestHandler_ProcessNext_Wait(t *testing.T) {
 		ID:          "fail-1",
 		BlockNumber: 100,
 		RetryCount:  0,
-		LastAttempt: time.Now(), // Just now
+		LastAttempt: uint64(time.Now().Unix()), // Just now
 	})
 
 	called := false
@@ -199,7 +199,7 @@ func TestHandler_ProcessNext_FailAndIncrement(t *testing.T) {
 		ID:          "fail-1",
 		BlockNumber: 100,
 		RetryCount:  0,
-		LastAttempt: time.Now().Add(-1 * time.Hour),
+		LastAttempt: uint64(time.Now().Add(-1 * time.Hour).Unix()),
 	})
 
 	fetcher := func(ctx context.Context, chainID string, blockNum uint64) error {

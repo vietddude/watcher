@@ -3,7 +3,6 @@ package sui
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/chain"
@@ -195,17 +194,19 @@ func (a *Adapter) HasRelevantTransactions(
 // Helper mappings
 
 func (a *Adapter) mapCheckpointToBlock(cp *suipb.Checkpoint) (*domain.Block, error) {
-	timestamp := time.Unix(0, 0)
+	var timestamp uint64
 	if cp.Summary != nil && cp.Summary.Timestamp != nil {
-		timestamp = cp.Summary.Timestamp.AsTime()
+		timestamp = uint64(cp.Summary.Timestamp.Seconds)
 	}
 
 	return &domain.Block{
+		ChainID:    a.chainID,
 		Number:     cp.GetSequenceNumber(),
 		Hash:       cp.GetDigest(),
 		ParentHash: cp.Summary.GetPreviousDigest(),
 		Timestamp:  timestamp,
 		TxCount:    len(cp.GetTransactions()),
+		Status:     domain.BlockStatusProcessed, // Checkpoints are final
 	}, nil
 }
 

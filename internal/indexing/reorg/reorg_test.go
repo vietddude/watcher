@@ -89,6 +89,13 @@ func (r *mockBlockRepo) FindGaps(
 func (r *mockBlockRepo) DeleteRange(ctx context.Context, chainID string, from, to uint64) error {
 	return nil
 }
+func (r *mockBlockRepo) DeleteBlocksOlderThan(
+	ctx context.Context,
+	chainID string,
+	timestamp uint64,
+) error {
+	return nil
+}
 
 // =============================================================================
 // Detector Tests

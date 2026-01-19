@@ -42,7 +42,7 @@ func (r *mockCursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error 
 	defer r.mu.Unlock()
 
 	c := *cursor
-	c.UpdatedAt = time.Now()
+	c.UpdatedAt = uint64(time.Now().Unix())
 	r.cursors[cursor.ChainID] = &c
 	return nil
 }
@@ -62,7 +62,7 @@ func (r *mockCursorRepo) UpdateBlock(
 	}
 	cursor.CurrentBlock = blockNumber
 	cursor.CurrentBlockHash = blockHash
-	cursor.UpdatedAt = time.Now()
+	cursor.UpdatedAt = uint64(time.Now().Unix())
 	return nil
 }
 
@@ -79,7 +79,7 @@ func (r *mockCursorRepo) UpdateState(
 		return ErrCursorNotFound
 	}
 	cursor.State = state
-	cursor.UpdatedAt = time.Now()
+	cursor.UpdatedAt = uint64(time.Now().Unix())
 	return nil
 }
 
@@ -98,7 +98,7 @@ func (r *mockCursorRepo) Rollback(
 	}
 	cursor.CurrentBlock = blockNumber
 	cursor.CurrentBlockHash = blockHash
-	cursor.UpdatedAt = time.Now()
+	cursor.UpdatedAt = uint64(time.Now().Unix())
 	return nil
 }
 

@@ -1,15 +1,14 @@
 package domain
 
-import "time"
-
 // Cursor represents the indexing position
 type Cursor struct {
-	ChainID          string
-	CurrentBlock     uint64
-	CurrentBlockHash string
-	UpdatedAt        time.Time
-	State            CursorState
-	Metadata         map[string]any
+	ID               string         `json:"id"`
+	ChainID          string         `json:"chain_id"`
+	CurrentBlock     uint64         `json:"block_number"`
+	CurrentBlockHash string         `json:"block_hash"`
+	UpdatedAt        uint64         `json:"updated_at"`
+	State            CursorState    `json:"state"`
+	Metadata         map[string]any `json:"metadata"`
 }
 
 type CursorState string

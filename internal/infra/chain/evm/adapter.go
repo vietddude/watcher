@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"time"
 
 	logger "log/slog"
 
@@ -245,7 +244,7 @@ func (a *EVMAdapter) parseBlock(blockData map[string]any) (*domain.Block, error)
 		Number:     number,
 		Hash:       hash,
 		ParentHash: parentHash,
-		Timestamp:  time.Unix(int64(timestamp), 0),
+		Timestamp:  timestamp,
 		TxCount:    txCount,
 		Status:     domain.BlockStatusPending,
 		Metadata: map[string]any{

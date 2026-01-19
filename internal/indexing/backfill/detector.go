@@ -84,7 +84,7 @@ func (d *Detector) queueGap(ctx context.Context, chainID string, gap Gap, priori
 		ToBlock:   gap.ToBlock,
 		Status:    domain.MissingBlockStatusPending,
 		Priority:  priority,
-		CreatedAt: time.Now(),
+		CreatedAt: uint64(time.Now().Unix()),
 	}
 
 	return d.missingRepo.Add(ctx, missing)

@@ -3,7 +3,6 @@ package evm
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc"
@@ -130,7 +129,7 @@ func TestEVMAdapter_GetTransactions(t *testing.T) {
 	block := &domain.Block{
 		Number:    1234567,
 		Hash:      "0xabc123",
-		Timestamp: time.Unix(1700000000, 0),
+		Timestamp: 1700000000,
 		TxCount:   2,
 	}
 

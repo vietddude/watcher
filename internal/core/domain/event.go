@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 // Event represents an emitted blockchain event
 type Event struct {
 	ID          string
@@ -9,7 +7,7 @@ type Event struct {
 	ChainID     string
 	BlockNumber uint64
 	Transaction *Transaction
-	EmittedAt   time.Time
+	EmittedAt   uint64
 	Metadata    map[string]any
 }
 

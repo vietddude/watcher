@@ -45,7 +45,8 @@ func (h *Handler) ProcessNext(ctx context.Context, chainID string) error {
 
 	// Calculate if it's time to retry
 	delay := h.strategy.GetDelay(failedBlock.RetryCount)
-	nextAttempt := failedBlock.LastAttempt.Add(delay)
+	lastAttempt := time.Unix(int64(failedBlock.LastAttempt), 0)
+	nextAttempt := lastAttempt.Add(delay)
 
 	if time.Now().Before(nextAttempt) {
 		return nil // Too early to retry
@@ -105,8 +106,8 @@ func (h *Handler) HandleFailure(
 		Error:       err.Error(),
 		RetryCount:  0,
 		Status:      domain.FailedBlockStatusPending,
-		LastAttempt: time.Now(),
-		CreatedAt:   time.Now(),
+		LastAttempt: uint64(time.Now().Unix()),
+		CreatedAt:   uint64(time.Now().Unix()),
 	}
 
 	if err := h.repo.Add(ctx, failedBlock); err != nil {

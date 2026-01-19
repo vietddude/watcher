@@ -42,6 +42,9 @@ type BlockRepository interface {
 
 	// DeleteRange deletes blocks in a range (for reorg rollback)
 	DeleteRange(ctx context.Context, chainID string, fromBlock, toBlock uint64) error
+
+	// DeleteOlderThan deletes blocks older than the given timestamp
+	DeleteBlocksOlderThan(ctx context.Context, chainID string, timestamp uint64) error
 }
 
 type Gap struct {
@@ -72,6 +75,9 @@ type TransactionRepository interface {
 
 	// DeleteByBlock deletes transactions in a block (for reorg rollback)
 	DeleteByBlock(ctx context.Context, chainID string, blockNumber uint64) error
+
+	// DeleteTransactionsOlderThan deletes transactions older than the given timestamp
+	DeleteTransactionsOlderThan(ctx context.Context, chainID string, timestamp uint64) error
 }
 
 // CursorRepository handles cursor storage operations

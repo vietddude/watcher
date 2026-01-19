@@ -83,7 +83,7 @@ func (m *DefaultManager) Initialize(
 	cursor := &domain.Cursor{
 		ChainID:      chainID,
 		CurrentBlock: startBlock,
-		UpdatedAt:    time.Now(),
+		UpdatedAt:    uint64(time.Now().Unix()),
 		State:        domain.CursorStateInit,
 		Metadata:     make(map[string]any),
 	}

@@ -1,47 +1,53 @@
 -- +goose Up
 -- +goose StatementBegin
 SELECT 'up SQL query';
-
 -- Safe reset for init schema (dev env)
 DROP TABLE IF EXISTS failed_blocks CASCADE;
 DROP TABLE IF EXISTS missing_blocks CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS blocks CASCADE;
 DROP TABLE IF EXISTS cursors CASCADE;
+DROP TABLE IF EXISTS wallet_addresses CASCADE;
 
--- Enable UUID extension if needed (though we use string IDs mostly)
--- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Cursors Table
+--------------------------------------------------
+-- Cursors
+--------------------------------------------------
 CREATE TABLE cursors (
     chain_id VARCHAR(64) PRIMARY KEY,
     block_number BIGINT NOT NULL DEFAULT 0,
     block_hash VARCHAR(128) NOT NULL DEFAULT '',
     state VARCHAR(32) NOT NULL DEFAULT 'scanning', -- scanning, backfill, reorg, paused
     metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
+    updated_at BIGINT DEFAULT (extract(epoch from now())::bigint)
 );
 
--- Blocks Table
+--------------------------------------------------
+-- Blocks
+--------------------------------------------------
 CREATE TABLE blocks (
     chain_id VARCHAR(64) NOT NULL,
     block_number BIGINT NOT NULL,
     block_hash VARCHAR(128) NOT NULL,
     parent_hash VARCHAR(128) NOT NULL,
-    block_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    block_timestamp BIGINT NOT NULL,
     tx_count INT NOT NULL DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'finalized', -- pending, finalized, orphaned
     metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
+    created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
+
     PRIMARY KEY (chain_id, block_number)
 );
 
-CREATE INDEX idx_blocks_hash ON blocks(chain_id, block_hash);
-CREATE INDEX idx_blocks_timestamp ON blocks(chain_id, block_timestamp);
+CREATE UNIQUE INDEX uq_blocks_chain_hash
+ON blocks(chain_id, block_hash);
 
--- Transactions Table
+CREATE INDEX idx_blocks_timestamp
+ON blocks(chain_id, block_timestamp);
+
+--------------------------------------------------
+-- Transactions
+--------------------------------------------------
 CREATE TABLE transactions (
     chain_id VARCHAR(64) NOT NULL,
     tx_hash VARCHAR(128) NOT NULL,
@@ -50,61 +56,77 @@ CREATE TABLE transactions (
     tx_index INT NOT NULL,
     from_address VARCHAR(128) NOT NULL,
     to_address VARCHAR(128) DEFAULT '',
-    value VARCHAR(128) DEFAULT '0', -- Store as string for big integers
+    value VARCHAR(128) DEFAULT '0',
     gas_used BIGINT DEFAULT 0,
     gas_price VARCHAR(128) DEFAULT '0',
-    status VARCHAR(32) DEFAULT 'success', -- success, failed
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(32) DEFAULT 'success', -- success, failed, orphaned
+    block_timestamp BIGINT NOT NULL,
     raw_data JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
 
-    PRIMARY KEY (chain_id, tx_hash)
+    PRIMARY KEY (chain_id, tx_hash, block_number)
 );
 
-CREATE INDEX idx_transactions_block ON transactions(chain_id, block_number);
-CREATE INDEX idx_transactions_from ON transactions(chain_id, from_address);
-CREATE INDEX idx_transactions_to ON transactions(chain_id, to_address);
+-- 🔧 CHANGED: index đúng pattern query
+CREATE INDEX idx_transactions_chain_block
+ON transactions(chain_id, block_number);
 
+CREATE INDEX idx_transactions_chain_from
+ON transactions(chain_id, from_address);
+
+CREATE INDEX idx_transactions_chain_to
+ON transactions(chain_id, to_address);
+
+--------------------------------------------------
 -- Missing Blocks Queue
+--------------------------------------------------
 CREATE TABLE missing_blocks (
     id SERIAL PRIMARY KEY,
     chain_id VARCHAR(64) NOT NULL,
     from_block BIGINT NOT NULL,
     to_block BIGINT NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending, processing, completed, failed
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
     attempts INT NOT NULL DEFAULT 0,
     error_msg TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
+    updated_at BIGINT DEFAULT (extract(epoch from now())::bigint)
 );
 
-CREATE INDEX idx_missing_blocks_status ON missing_blocks(chain_id, status);
+CREATE INDEX idx_missing_blocks_chain_status
+ON missing_blocks(chain_id, status);
 
+--------------------------------------------------
 -- Failed Blocks Queue
+--------------------------------------------------
 CREATE TABLE failed_blocks (
     id SERIAL PRIMARY KEY,
     chain_id VARCHAR(64) NOT NULL,
     block_number BIGINT NOT NULL,
     error_msg TEXT,
     retry_count INT NOT NULL DEFAULT 0,
+    last_attempt BIGINT DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending, resolved, abandoned
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
+    updated_at BIGINT DEFAULT (extract(epoch from now())::bigint)
 );
 
-CREATE INDEX idx_failed_blocks_status ON failed_blocks(chain_id, status);
+CREATE INDEX idx_failed_blocks_chain_status
+ON failed_blocks(chain_id, status);
 
--- Wallet Addresses Table
+--------------------------------------------------
+-- Wallet Addresses (Bloom input only)
+--------------------------------------------------
 CREATE TABLE wallet_addresses (
     id SERIAL PRIMARY KEY,
     address VARCHAR(128) NOT NULL,
     network_type VARCHAR(64) NOT NULL,
     standard VARCHAR(64) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
+    updated_at BIGINT DEFAULT (extract(epoch from now())::bigint)
 );
 
-CREATE INDEX idx_wallet_addresses_address ON wallet_addresses(address);
+CREATE UNIQUE INDEX uq_wallet_addresses_unique
+ON wallet_addresses(address, network_type);
 
 -- +goose StatementEnd
 

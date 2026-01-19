@@ -3,7 +3,6 @@ package bitcoin
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc"
@@ -148,7 +147,7 @@ func TestBitcoinAdapter_ParseUTXOTransaction(t *testing.T) {
 	block := &domain.Block{
 		Number:    800000,
 		Hash:      "00000000000000000001a2b3c4d5e6f7",
-		Timestamp: time.Unix(1700000000, 0),
+		Timestamp: 1700000000,
 	}
 
 	txData := map[string]any{

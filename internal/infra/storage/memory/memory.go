@@ -135,6 +135,24 @@ func (r *BlockRepo) DeleteRange(ctx context.Context, chainID string, from, to ui
 	return nil
 }
 
+func (r *BlockRepo) DeleteBlocksOlderThan(
+	ctx context.Context,
+	chainID string,
+	timestamp uint64,
+) error {
+	r.store.mu.Lock()
+	defer r.store.mu.Unlock()
+	for k, b := range r.store.blocks {
+		// Note: b.Timestamp should be uint64.
+		// Need to verify domain.Block timestamp type.
+		// Step 442 "Update domain models to use uint64".
+		if b.ChainID == chainID && b.Timestamp < timestamp {
+			delete(r.store.blocks, k)
+		}
+	}
+	return nil
+}
+
 // -----------------------------------------------------------------------------
 // Transaction Repository
 // -----------------------------------------------------------------------------
@@ -214,6 +232,21 @@ func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, num uint64) 
 	defer r.store.mu.Unlock()
 	for k, tx := range r.store.txs {
 		if tx.ChainID == chainID && tx.BlockNumber == num {
+			delete(r.store.txs, k)
+		}
+	}
+	return nil
+}
+
+func (r *TxRepo) DeleteTransactionsOlderThan(
+	ctx context.Context,
+	chainID string,
+	timestamp uint64,
+) error {
+	r.store.mu.Lock()
+	defer r.store.mu.Unlock()
+	for k, tx := range r.store.txs {
+		if tx.ChainID == chainID && tx.Timestamp < timestamp {
 			delete(r.store.txs, k)
 		}
 	}

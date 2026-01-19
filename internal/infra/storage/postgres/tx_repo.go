@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
 // TxRepo implements storage.TransactionRepository using PostgreSQL.
@@ -21,23 +22,19 @@ func NewTxRepo(db *DB) *TxRepo {
 
 // Save saves a transaction to the database.
 func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
-	query := `
-		INSERT INTO transactions (
-			chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-		ON CONFLICT (chain_id, tx_hash) DO UPDATE SET
-			block_number = EXCLUDED.block_number,
-			status = EXCLUDED.status
-	`
-	// Note: Schema in DB might differ slightly from domain struct which has more fields (e.g. BlockHash, TxIndex, RawData etc. if added later).
-	// Based on migration:
-	// chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
-
-	_, err := r.db.ExecContext(ctx, query,
-		tx.ChainID, tx.TxHash, tx.BlockNumber,
-		tx.From, tx.To, tx.Value, tx.GasUsed, tx.GasPrice,
-		string(tx.Status),
-	)
+	err := r.db.Queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
+		ChainID:        tx.ChainID,
+		TxHash:         tx.TxHash,
+		BlockNumber:    int64(tx.BlockNumber),
+		FromAddress:    tx.From,
+		ToAddress:      sql.NullString{String: tx.To, Valid: tx.To != ""},
+		Value:          sql.NullString{String: tx.Value, Valid: tx.Value != ""},
+		GasUsed:        sql.NullInt64{Int64: int64(tx.GasUsed), Valid: true},
+		GasPrice:       sql.NullString{String: tx.GasPrice, Valid: tx.GasPrice != ""},
+		Status:         sql.NullString{String: string(tx.Status), Valid: string(tx.Status) != ""},
+		CreatedAt:      sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+		BlockTimestamp: int64(tx.Timestamp),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to save transaction: %w", err)
 	}
@@ -50,33 +47,29 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 		return nil
 	}
 
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
+
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	query := `
-		INSERT INTO transactions (
-			chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-		ON CONFLICT (chain_id, tx_hash) DO UPDATE SET
-			block_number = EXCLUDED.block_number,
-			status = EXCLUDED.status
-	`
-
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+	qtx := r.db.Queries.WithTx(tx)
 
 	for _, t := range txs {
-		_, err := stmt.ExecContext(ctx,
-			t.ChainID, t.TxHash, t.BlockNumber,
-			t.From, t.To, t.Value, t.GasUsed, t.GasPrice,
-			string(t.Status),
-		)
+		err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
+			ChainID:        t.ChainID,
+			TxHash:         t.TxHash,
+			BlockNumber:    int64(t.BlockNumber),
+			FromAddress:    t.From,
+			ToAddress:      sql.NullString{String: t.To, Valid: t.To != ""},
+			Value:          sql.NullString{String: t.Value, Valid: t.Value != ""},
+			GasUsed:        sql.NullInt64{Int64: int64(t.GasUsed), Valid: true},
+			GasPrice:       sql.NullString{String: t.GasPrice, Valid: t.GasPrice != ""},
+			Status:         sql.NullString{String: string(t.Status), Valid: string(t.Status) != ""},
+			CreatedAt:      sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+			BlockTimestamp: int64(t.Timestamp),
+		})
 		if err != nil {
 			return err
 		}
@@ -85,58 +78,24 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 	return tx.Commit()
 }
 
-type txRow struct {
-	ChainID     string    `db:"chain_id"`
-	TxHash      string    `db:"tx_hash"`
-	BlockNumber uint64    `db:"block_number"`
-	From        string    `db:"from_address"`
-	To          *string   `db:"to_address"` // Nullable
-	Value       string    `db:"value"`
-	GasUsed     uint64    `db:"gas_used"`
-	GasPrice    string    `db:"gas_price"`
-	Status      string    `db:"status"`
-	CreatedAt   time.Time `db:"created_at"`
-}
-
-func (t *txRow) toDomain() *domain.Transaction {
-	tx := &domain.Transaction{
-		ChainID:     t.ChainID,
-		TxHash:      t.TxHash,
-		BlockNumber: t.BlockNumber,
-		From:        t.From,
-		Value:       t.Value,
-		GasUsed:     t.GasUsed,
-		GasPrice:    t.GasPrice,
-		Status:      domain.TxStatus(t.Status),
-	}
-	if t.To != nil {
-		tx.To = *t.To
-	}
-	return tx
-}
-
 // GetByHash retrieves a transaction by hash.
 func (r *TxRepo) GetByHash(
 	ctx context.Context,
 	chainID string,
 	txHash string,
 ) (*domain.Transaction, error) {
-	query := `
-		SELECT chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
-		FROM transactions
-		WHERE chain_id = $1 AND tx_hash = $2
-	`
-
-	var row txRow
-	err := r.db.GetContext(ctx, &row, query, chainID, txHash)
+	row, err := r.db.Queries.GetTransactionByHash(ctx, sqlc.GetTransactionByHashParams{
+		ChainID: chainID,
+		TxHash:  txHash,
+	})
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, nil // Not found
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction: %w", err)
 	}
 
-	return row.toDomain(), nil
+	return r.toDomain(row), nil
 }
 
 // GetByBlock retrieves all transactions in a block.
@@ -145,21 +104,17 @@ func (r *TxRepo) GetByBlock(
 	chainID string,
 	blockNumber uint64,
 ) ([]*domain.Transaction, error) {
-	query := `
-		SELECT chain_id, tx_hash, block_number, from_address, to_address, value, gas_used, gas_price, status, created_at
-		FROM transactions
-		WHERE chain_id = $1 AND block_number = $2
-	`
-
-	var rows []txRow
-	err := r.db.SelectContext(ctx, &rows, query, chainID, blockNumber)
+	rows, err := r.db.Queries.GetTransactionsByBlock(ctx, sqlc.GetTransactionsByBlockParams{
+		ChainID:     chainID,
+		BlockNumber: int64(blockNumber),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
 
 	var txs []*domain.Transaction
 	for _, row := range rows {
-		txs = append(txs, row.toDomain())
+		txs = append(txs, r.toDomain(row))
 	}
 	return txs, nil
 }
@@ -171,14 +126,52 @@ func (r *TxRepo) UpdateStatus(
 	txHash string,
 	status domain.TxStatus,
 ) error {
-	query := `UPDATE transactions SET status = $1 WHERE chain_id = $2 AND tx_hash = $3`
-	_, err := r.db.ExecContext(ctx, query, string(status), chainID, txHash)
+	err := r.db.Queries.UpdateTransactionStatus(ctx, sqlc.UpdateTransactionStatusParams{
+		Status:  sql.NullString{String: string(status), Valid: string(status) != ""},
+		ChainID: chainID,
+		TxHash:  txHash,
+	})
 	return err
 }
 
 // DeleteByBlock deletes transactions in a block.
 func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, blockNumber uint64) error {
-	query := `DELETE FROM transactions WHERE chain_id = $1 AND block_number = $2`
-	_, err := r.db.ExecContext(ctx, query, chainID, blockNumber)
+	err := r.db.Queries.DeleteTransactionsByBlock(ctx, sqlc.DeleteTransactionsByBlockParams{
+		ChainID:     chainID,
+		BlockNumber: int64(blockNumber),
+	})
 	return err
+}
+
+func (r *TxRepo) toDomain(row sqlc.Transaction) *domain.Transaction {
+	tx := &domain.Transaction{
+		ChainID:     row.ChainID,
+		TxHash:      row.TxHash,
+		BlockNumber: uint64(row.BlockNumber),
+		From:        row.FromAddress,
+		To:          row.ToAddress.String,
+		Value:       row.Value.String,
+		GasUsed:     uint64(row.GasUsed.Int64),
+		GasPrice:    row.GasPrice.String,
+		Status:      domain.TxStatus(row.Status.String),
+		Timestamp:   uint64(row.BlockTimestamp), // Use BlockTimestamp as it is NOT NULL in schema
+		// Note: CreatedAt is also available in row.CreatedAt
+	}
+	return tx
+}
+
+// DeleteTransactionsOlderThan deletes transactions older than the given timestamp.
+func (r *TxRepo) DeleteTransactionsOlderThan(
+	ctx context.Context,
+	chainID string,
+	timestamp uint64,
+) error {
+	err := r.db.Queries.DeleteTransactionsOlderThan(ctx, sqlc.DeleteTransactionsOlderThanParams{
+		ChainID:        chainID,
+		BlockTimestamp: int64(timestamp),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete old transactions: %w", err)
+	}
+	return nil
 }

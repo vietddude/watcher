@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
 // CursorRepo implements storage.CursorRepository using PostgreSQL.
@@ -21,25 +22,13 @@ func NewCursorRepo(db *DB) *CursorRepo {
 
 // Save saves a cursor to the database.
 func (r *CursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error {
-	query := `
-		INSERT INTO cursors (chain_id, block_number, block_hash, state, updated_at)
-		VALUES ($1, $2, $3, $4, NOW())
-		ON CONFLICT (chain_id) DO UPDATE SET
-			block_number = EXCLUDED.block_number,
-			block_hash = EXCLUDED.block_hash,
-			updated_at = NOW()
-	`
-	state := string(cursor.State)
-	if state == "" {
-		state = "running"
-	}
-
-	_, err := r.db.ExecContext(ctx, query,
-		cursor.ChainID,
-		cursor.CurrentBlock,
-		cursor.CurrentBlockHash,
-		state,
-	)
+	err := r.db.Queries.UpsertCursor(ctx, sqlc.UpsertCursorParams{
+		ChainID:     cursor.ChainID,
+		BlockNumber: int64(cursor.CurrentBlock),
+		BlockHash:   cursor.CurrentBlockHash,
+		State:       string(cursor.State),
+		UpdatedAt:   sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to save cursor: %w", err)
 	}
@@ -48,21 +37,7 @@ func (r *CursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error {
 
 // Get retrieves a cursor by chain ID.
 func (r *CursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, error) {
-	query := `
-		SELECT chain_id, block_number, block_hash, state, updated_at
-		FROM cursors
-		WHERE chain_id = $1
-	`
-
-	var dest struct {
-		ChainID     string    `db:"chain_id"`
-		BlockNumber uint64    `db:"block_number"`
-		BlockHash   string    `db:"block_hash"`
-		State       string    `db:"state"`
-		UpdatedAt   time.Time `db:"updated_at"`
-	}
-
-	err := r.db.GetContext(ctx, &dest, query, chainID)
+	row, err := r.db.Queries.GetCursor(ctx, chainID)
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
 	}
@@ -71,11 +46,11 @@ func (r *CursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, e
 	}
 
 	return &domain.Cursor{
-		ChainID:          dest.ChainID,
-		CurrentBlock:     dest.BlockNumber,
-		CurrentBlockHash: dest.BlockHash,
-		State:            domain.CursorState(dest.State),
-		UpdatedAt:        dest.UpdatedAt,
+		ChainID:          row.ChainID,
+		CurrentBlock:     uint64(row.BlockNumber),
+		CurrentBlockHash: row.BlockHash,
+		State:            domain.CursorState(row.State),
+		UpdatedAt:        uint64(row.UpdatedAt.Int64),
 	}, nil
 }
 
@@ -86,32 +61,16 @@ func (r *CursorRepo) UpdateBlock(
 	blockNumber uint64,
 	blockHash string,
 ) error {
-	query := `
-		UPDATE cursors 
-		SET block_number = $1, block_hash = $2, updated_at = NOW()
-		WHERE chain_id = $3
-	`
-	res, err := r.db.ExecContext(ctx, query, blockNumber, blockHash, chainID)
+	// UpsertCursorBlock handles insert if not exists (with default state 'running')
+	// or update if exists (preserving state).
+	err := r.db.Queries.UpsertCursorBlock(ctx, sqlc.UpsertCursorBlockParams{
+		ChainID:     chainID,
+		BlockNumber: int64(blockNumber),
+		BlockHash:   blockHash,
+		UpdatedAt:   sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update cursor block: %w", err)
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		// Upsert cursor if it doesn't exist
-		upsertQuery := `
-			INSERT INTO cursors (chain_id, block_number, block_hash, state, updated_at)
-			VALUES ($1, $2, $3, 'running', NOW())
-			ON CONFLICT (chain_id) DO UPDATE SET
-				block_number = EXCLUDED.block_number,
-				block_hash = EXCLUDED.block_hash,
-				updated_at = NOW()
-		`
-		_, err := r.db.ExecContext(ctx, upsertQuery, chainID, blockNumber, blockHash)
-		return err
 	}
 	return nil
 }
@@ -122,12 +81,11 @@ func (r *CursorRepo) UpdateState(
 	chainID string,
 	state domain.CursorState,
 ) error {
-	query := `
-		UPDATE cursors 
-		SET state = $1, updated_at = NOW()
-		WHERE chain_id = $2
-	`
-	_, err := r.db.ExecContext(ctx, query, string(state), chainID)
+	err := r.db.Queries.UpdateCursorState(ctx, sqlc.UpdateCursorStateParams{
+		State:     string(state),
+		ChainID:   chainID,
+		UpdatedAt: sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
+	})
 	return err
 }
 

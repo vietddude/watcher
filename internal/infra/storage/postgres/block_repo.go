@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
 // BlockRepo implements storage.BlockRepository using PostgreSQL.
@@ -22,24 +22,14 @@ func NewBlockRepo(db *DB) *BlockRepo {
 
 // Save saves a block to the database.
 func (r *BlockRepo) Save(ctx context.Context, block *domain.Block) error {
-	query := `
-		INSERT INTO blocks (chain_id, block_number, block_hash, parent_hash, block_timestamp, status)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (chain_id, block_number) DO UPDATE SET
-			block_hash = EXCLUDED.block_hash,
-			parent_hash = EXCLUDED.parent_hash,
-			block_timestamp = EXCLUDED.block_timestamp,
-			status = EXCLUDED.status
-	`
-
-	_, err := r.db.ExecContext(ctx, query,
-		block.ChainID,
-		block.Number,
-		block.Hash,
-		block.ParentHash,
-		block.Timestamp,
-		string(block.Status),
-	)
+	err := r.db.Queries.CreateBlock(ctx, sqlc.CreateBlockParams{
+		ChainID:        block.ChainID,
+		BlockNumber:    int64(block.Number),
+		BlockHash:      block.Hash,
+		ParentHash:     block.ParentHash,
+		BlockTimestamp: int64(block.Timestamp),
+		Status:         string(block.Status),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to save block: %w", err)
 	}
@@ -52,37 +42,23 @@ func (r *BlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error
 		return nil
 	}
 
-	tx, err := r.db.BeginTxx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	query := `
-		INSERT INTO blocks (chain_id, block_number, block_hash, parent_hash, block_timestamp, status)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (chain_id, block_number) DO UPDATE SET
-			block_hash = EXCLUDED.block_hash,
-			parent_hash = EXCLUDED.parent_hash,
-			block_timestamp = EXCLUDED.block_timestamp,
-			status = EXCLUDED.status
-	`
-
-	stmt, err := tx.PrepareContext(ctx, query)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+	qtx := r.db.Queries.WithTx(tx)
 
 	for _, block := range blocks {
-		_, err := stmt.ExecContext(ctx,
-			block.ChainID,
-			block.Number,
-			block.Hash,
-			block.ParentHash,
-			block.Timestamp,
-			string(block.Status),
-		)
+		err := qtx.CreateBlock(ctx, sqlc.CreateBlockParams{
+			ChainID:        block.ChainID,
+			BlockNumber:    int64(block.Number),
+			BlockHash:      block.Hash,
+			ParentHash:     block.ParentHash,
+			BlockTimestamp: int64(block.Timestamp),
+			Status:         string(block.Status),
+		})
 		if err != nil {
 			return err
 		}
@@ -91,40 +67,16 @@ func (r *BlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error
 	return tx.Commit()
 }
 
-type blockRow struct {
-	ChainID    string    `db:"chain_id"`
-	Number     uint64    `db:"block_number"`
-	Hash       string    `db:"block_hash"`
-	ParentHash string    `db:"parent_hash"`
-	Timestamp  time.Time `db:"block_timestamp"`
-	Status     string    `db:"status"`
-}
-
-func (b *blockRow) toDomain() *domain.Block {
-	return &domain.Block{
-		ChainID:    b.ChainID,
-		Number:     b.Number,
-		Hash:       b.Hash,
-		ParentHash: b.ParentHash,
-		Timestamp:  b.Timestamp,
-		Status:     domain.BlockStatus(b.Status),
-	}
-}
-
 // GetByNumber retrieves a block by number.
 func (r *BlockRepo) GetByNumber(
 	ctx context.Context,
 	chainID string,
 	blockNumber uint64,
 ) (*domain.Block, error) {
-	query := `
-		SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status
-		FROM blocks
-		WHERE chain_id = $1 AND block_number = $2
-	`
-
-	var row blockRow
-	err := r.db.GetContext(ctx, &row, query, chainID, blockNumber)
+	row, err := r.db.Queries.GetBlockByNumber(ctx, sqlc.GetBlockByNumberParams{
+		ChainID:     chainID,
+		BlockNumber: int64(blockNumber),
+	})
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
 	}
@@ -132,7 +84,14 @@ func (r *BlockRepo) GetByNumber(
 		return nil, fmt.Errorf("failed to get block: %w", err)
 	}
 
-	return row.toDomain(), nil
+	return &domain.Block{
+		ChainID:    row.ChainID,
+		Number:     uint64(row.BlockNumber),
+		Hash:       row.BlockHash,
+		ParentHash: row.ParentHash,
+		Timestamp:  uint64(row.BlockTimestamp),
+		Status:     domain.BlockStatus(row.Status),
+	}, nil
 }
 
 // GetByHash retrieves a block by hash.
@@ -141,14 +100,10 @@ func (r *BlockRepo) GetByHash(
 	chainID string,
 	blockHash string,
 ) (*domain.Block, error) {
-	query := `
-		SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status
-		FROM blocks
-		WHERE chain_id = $1 AND block_hash = $2
-	`
-
-	var row blockRow
-	err := r.db.GetContext(ctx, &row, query, chainID, blockHash)
+	row, err := r.db.Queries.GetBlockByHash(ctx, sqlc.GetBlockByHashParams{
+		ChainID:   chainID,
+		BlockHash: blockHash,
+	})
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
 	}
@@ -156,21 +111,19 @@ func (r *BlockRepo) GetByHash(
 		return nil, fmt.Errorf("failed to get block: %w", err)
 	}
 
-	return row.toDomain(), nil
+	return &domain.Block{
+		ChainID:    row.ChainID,
+		Number:     uint64(row.BlockNumber),
+		Hash:       row.BlockHash,
+		ParentHash: row.ParentHash,
+		Timestamp:  uint64(row.BlockTimestamp),
+		Status:     domain.BlockStatus(row.Status),
+	}, nil
 }
 
 // GetLatest retrieves the latest indexed block.
 func (r *BlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
-	query := `
-		SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status
-		FROM blocks
-		WHERE chain_id = $1
-		ORDER BY block_number DESC
-		LIMIT 1
-	`
-
-	var row blockRow
-	err := r.db.GetContext(ctx, &row, query, chainID)
+	row, err := r.db.Queries.GetLatestBlock(ctx, chainID)
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
 	}
@@ -178,7 +131,14 @@ func (r *BlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Bloc
 		return nil, fmt.Errorf("failed to get latest block: %w", err)
 	}
 
-	return row.toDomain(), nil
+	return &domain.Block{
+		ChainID:    row.ChainID,
+		Number:     uint64(row.BlockNumber),
+		Hash:       row.BlockHash,
+		ParentHash: row.ParentHash,
+		Timestamp:  uint64(row.BlockTimestamp),
+		Status:     domain.BlockStatus(row.Status),
+	}, nil
 }
 
 // UpdateStatus updates block status.
@@ -188,8 +148,11 @@ func (r *BlockRepo) UpdateStatus(
 	blockNumber uint64,
 	status domain.BlockStatus,
 ) error {
-	query := `UPDATE blocks SET status = $1 WHERE chain_id = $2 AND block_number = $3`
-	_, err := r.db.ExecContext(ctx, query, string(status), chainID, blockNumber)
+	err := r.db.Queries.UpdateBlockStatus(ctx, sqlc.UpdateBlockStatusParams{
+		Status:      string(status),
+		ChainID:     chainID,
+		BlockNumber: int64(blockNumber),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update block status: %w", err)
 	}
@@ -202,32 +165,21 @@ func (r *BlockRepo) FindGaps(
 	chainID string,
 	fromBlock, toBlock uint64,
 ) ([]storage.Gap, error) {
-	query := `
-		WITH numbered AS (
-			SELECT block_number, LEAD(block_number) OVER (ORDER BY block_number) as next_block
-			FROM blocks WHERE chain_id = $1 AND block_number BETWEEN $2 AND $3
-		)
-		SELECT block_number + 1 as from_block, next_block - 1 as to_block 
-		FROM numbered WHERE next_block - block_number > 1
-	`
-
-	// Requires struct tag mapping or Scan
-	rows, err := r.db.QueryxContext(ctx, query, chainID, fromBlock, toBlock)
+	rows, err := r.db.Queries.FindGaps(ctx, sqlc.FindGapsParams{
+		ChainID:       chainID,
+		BlockNumber:   int64(fromBlock),
+		BlockNumber_2: int64(toBlock),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find gaps: %w", err)
 	}
-	defer rows.Close()
 
 	var gaps []storage.Gap
-	for rows.Next() {
-		var gap struct {
-			FromBlock uint64 `db:"from_block"`
-			ToBlock   uint64 `db:"to_block"`
-		}
-		if err := rows.StructScan(&gap); err != nil {
-			return nil, err
-		}
-		gaps = append(gaps, storage.Gap{FromBlock: gap.FromBlock, ToBlock: gap.ToBlock})
+	for _, row := range rows {
+		gaps = append(gaps, storage.Gap{
+			FromBlock: uint64(row.FromBlock),
+			ToBlock:   uint64(row.ToBlock),
+		})
 	}
 	return gaps, nil
 }
@@ -238,10 +190,29 @@ func (r *BlockRepo) DeleteRange(
 	chainID string,
 	fromBlock, toBlock uint64,
 ) error {
-	query := `DELETE FROM blocks WHERE chain_id = $1 AND block_number BETWEEN $2 AND $3`
-	_, err := r.db.ExecContext(ctx, query, chainID, fromBlock, toBlock)
+	err := r.db.Queries.DeleteBlocksInRange(ctx, sqlc.DeleteBlocksInRangeParams{
+		ChainID:       chainID,
+		BlockNumber:   int64(fromBlock),
+		BlockNumber_2: int64(toBlock),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to delete blocks: %w", err)
+	}
+	return nil
+}
+
+// DeleteBlocksOlderThan deletes blocks older than the given timestamp.
+func (r *BlockRepo) DeleteBlocksOlderThan(
+	ctx context.Context,
+	chainID string,
+	timestamp uint64,
+) error {
+	err := r.db.Queries.DeleteBlocksOlderThan(ctx, sqlc.DeleteBlocksOlderThanParams{
+		ChainID:        chainID,
+		BlockTimestamp: int64(timestamp),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete old blocks: %w", err)
 	}
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	logger "log/slog"
 
@@ -220,7 +219,7 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]any) (*domain.Block, er
 		Number:     uint64(height),
 		Hash:       hash,
 		ParentHash: previousBlockHash,
-		Timestamp:  time.Unix(int64(timestamp), 0),
+		Timestamp:  uint64(timestamp),
 		TxCount:    txCount,
 		Status:     domain.BlockStatusPending,
 		Metadata: map[string]any{

@@ -126,9 +126,9 @@ func TestFinalityBuffer_MultipleBlocksEmit(t *testing.T) {
 	ctx := context.Background()
 
 	// Blocks 100, 101, 102
-	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 100, EmittedAt: time.Now()})
-	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 101, EmittedAt: time.Now()})
-	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 102, EmittedAt: time.Now()})
+	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 100, EmittedAt: uint64(time.Now().Unix())})
+	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 101, EmittedAt: uint64(time.Now().Unix())})
+	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 102, EmittedAt: uint64(time.Now().Unix())})
 
 	// Jump to block 200 (finalizes all)
 	buffer.OnNewBlock(ctx, 200)
