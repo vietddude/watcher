@@ -13,14 +13,13 @@ import (
 	"github.com/vietddude/stylelog"
 	"github.com/vietddude/watcher/internal/control"
 	"github.com/vietddude/watcher/internal/core/config"
-	redisclient "github.com/vietddude/watcher/internal/infra/redis"
 )
 
 func main() {
 	// Parse flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
 	rescanRanges := flag.Bool("rescan-ranges", true, "Enable rescan range processing from Redis")
-	logLevel := flag.String("log-level", "", "Log level (debug, info, warn, error) - overrides config")
+	isDebug := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
 
 	// Load Configuration first (before setting up logger)
@@ -32,60 +31,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Determine log level (CLI flag > config > default)
-	level := cfg.Logging.Level
-	if *logLevel != "" {
-		level = *logLevel
-	}
-	if level == "" {
-		level = "info"
-	}
-
-	// Parse log level
-	var slogLevel slog.Level
-	switch level {
-	case "debug":
+	// Simplifed logging logic (debug < info)
+	slogLevel := slog.LevelInfo
+	if *isDebug || cfg.Logging.Level == "debug" {
 		slogLevel = slog.LevelDebug
-	case "warn":
-		slogLevel = slog.LevelWarn
-	case "error":
-		slogLevel = slog.LevelError
-	default:
-		slogLevel = slog.LevelInfo
 	}
 
 	// Initialize stylelog with tint.Options for level control
 	stylelog.InitDefault(&tint.Options{Level: slogLevel})
-	slog.Info("Logger initialized", "level", level)
+	slog.Info("Logger initialized", "level", slogLevel.String())
 
 	// Transform config
 	controlCfg := control.Config{
 		Port:                cfg.Server.Port,
-		Chains:              make([]config.ChainConfig, len(cfg.Chains)),
+		Chains:              cfg.Chains,
 		RescanRangesEnabled: *rescanRanges,
-		Redis: redisclient.Config{
-			URL:      cfg.Redis.URL,
-			Password: cfg.Redis.Password,
-		},
-	}
-
-	for i, c := range cfg.Chains {
-		providers := make([]config.ProviderConfig, len(c.Providers))
-		for j, p := range c.Providers {
-			providers[j] = config.ProviderConfig{
-				Name: p.Name,
-				URL:  p.URL,
-			}
-		}
-		controlCfg.Chains[i] = config.ChainConfig{
-			ChainID:        c.ChainID,
-			Type:           c.Type,
-			InternalCode:   c.InternalCode,
-			FinalityBlocks: c.FinalityBlocks,
-			ScanInterval:   c.ScanInterval,
-			RescanRanges:   c.RescanRanges,
-			Providers:      providers,
-		}
+		Redis:               cfg.Redis,
+		Database:            cfg.Database,
 	}
 
 	// Initialize Watcher
