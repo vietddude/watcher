@@ -87,8 +87,7 @@ func (r *MissingBlockRepo) MarkProcessing(ctx context.Context, id string) error 
 
 // MarkCompleted marks a range as completed.
 func (r *MissingBlockRepo) MarkCompleted(ctx context.Context, id string) error {
-	// Maybe delete completed items to keep table small?
-	// Or just mark status. Let's mark status as per interface.
+	// Mark status as completed
 	query := `UPDATE missing_blocks SET status = 'completed', updated_at = NOW() WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err

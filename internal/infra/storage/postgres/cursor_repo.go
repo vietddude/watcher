@@ -101,10 +101,7 @@ func (r *CursorRepo) UpdateBlock(
 		return err
 	}
 	if rows == 0 {
-		// Attempt insert if not exists (upsert logic usually handled by Save, but here strictly update)
-		// Or should we UPSERT? Interface says UpdateBlock, implies existing cursor?
-		// Memory repo might upsert. Let's assume cursor exists or use UPSERT logic if safe.
-		// For consistency, let's use UPSERT similar to Save but only updating block fields.
+		// Upsert cursor if it doesn't exist
 		upsertQuery := `
 			INSERT INTO cursors (chain_id, block_number, block_hash, state, updated_at)
 			VALUES ($1, $2, $3, 'running', NOW())
@@ -141,6 +138,6 @@ func (r *CursorRepo) Rollback(
 	blockNumber uint64,
 	blockHash string,
 ) error {
-	// Same as UpdateBlock basically, maybe update state to 'scanning' if it was something else?
+	// Rollback behaves like UpdateBlock
 	return r.UpdateBlock(ctx, chainID, blockNumber, blockHash)
 }

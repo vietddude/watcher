@@ -47,14 +47,6 @@ func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Blo
 
 // GetBlockByHash returns a block by digest
 func (a *Adapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
-	// ... existing implementation logic ...
-	// Assuming GetCheckpointByDigest is not available yet, we use the raw client.
-	// But wait, the raw client change I made previously wasn't in client.go, it was in adapter.go directly accessing ledger.
-	// I'll keep the existing logic but ensure it maps correctly.
-	// Actually, looking at previous file content, I implemented this using a.client.ledger directly in adapter.
-	// I won't change GetBlockByHash unless necessary.
-	// Re-reading GetBlockByHash to make sure I don't break it.
-
 	req := &suipb.GetCheckpointRequest{
 		CheckpointId: &suipb.GetCheckpointRequest_Digest{
 			Digest: blockHash,
@@ -101,9 +93,7 @@ func (a *Adapter) FilterTransactions(
 	txs []*domain.Transaction,
 	addresses []string,
 ) ([]*domain.Transaction, error) {
-	// In-memory filter for now.
-	// If we wanted to use Sui specific filtering at query time, we would need a different API.
-	// But the interface assumes we already have the transactions.
+	// Filter transactions in-memory.
 
 	addressSet := make(map[string]bool)
 	for _, addr := range addresses {
@@ -238,10 +228,7 @@ func (a *Adapter) mapTransaction(
 		sender = tx.GetSender()
 	}
 
-	// For "To" address, it's complicated in Sui (programmable txs).
-	// We might use the first recipient or leave empty if not applicable.
-	// For now, we leave To empty or try to infer from effects?
-	// Real implementation might iterate inputs/objects.
+	// "To" address is complex in Sui due to programmable transactions; leaving empty for now.
 
 	return &domain.Transaction{
 		TxHash:      execTx.GetDigest(),

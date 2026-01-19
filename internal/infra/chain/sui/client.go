@@ -77,8 +77,7 @@ func (c *Client) GetLatestCheckpoint(ctx context.Context) (*v2.Checkpoint, error
 
 // GetCheckpoint returns a checkpoint by sequence number (lightweight, no transactions)
 func (c *Client) GetCheckpoint(ctx context.Context, sequenceNumber uint64) (*v2.Checkpoint, error) {
-	// Default mask (sequence_number, digest, summary) - implied by not specifying transactions?
-	// Actually proto default is sequence_number, digest. We need summary for timestamp.
+	// Fetch minimal fields including summary for timestamp
 	mask, err := fieldmaskpb.New(&v2.Checkpoint{}, "sequence_number", "digest", "summary")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create field mask: %w", err)
