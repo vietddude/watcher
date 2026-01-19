@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/config"
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/backfill"
 	"github.com/vietddude/watcher/internal/indexing/emitter"
+	"github.com/vietddude/watcher/internal/indexing/filter"
 	"github.com/vietddude/watcher/internal/indexing/health"
 	"github.com/vietddude/watcher/internal/indexing/indexer"
 	"github.com/vietddude/watcher/internal/indexing/recovery"
@@ -43,30 +45,13 @@ type Watcher struct {
 // Config holds the application configuration.
 type Config struct {
 	Port                int
-	Chains              []ChainConfig
+	Chains              []config.ChainConfig
 	Backfill            backfill.ProcessorConfig
 	Budget              rpc.BudgetConfig
 	Reorg               reorg.Config
 	Redis               redisclient.Config
 	Database            postgres.Config // Add database config
 	RescanRangesEnabled bool            // CLI flag
-}
-
-// ChainConfig holds configuration for a specific chain.
-type ChainConfig struct {
-	ChainID        string        `yaml:"id" mapstructure:"id"`
-	Type           string        `yaml:"type" mapstructure:"type"` // "evm" or "sui"
-	InternalCode   string        `yaml:"internal_code" mapstructure:"internal_code"`
-	FinalityBlocks uint64        `yaml:"finality_blocks" mapstructure:"finality_blocks"`
-	ScanInterval   time.Duration `yaml:"scan_interval" mapstructure:"scan_interval"`
-	RescanRanges   bool          `yaml:"rescan_ranges" mapstructure:"rescan_ranges"` // Enable rescan worker
-	Providers      []ProviderConfig
-}
-
-// ProviderConfig holds configuration for an RPC provider.
-type ProviderConfig struct {
-	Name string
-	URL  string
 }
 
 // NewWatcher creates a new Watcher instance with all dependencies initialized.
@@ -80,7 +65,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	var failedRepo storage.FailedBlockRepository
 	var store *memory.MemoryStorage // Only for cleanup if used
 
-	simpleFilter := NewSimpleFilter()
+	simpleFilter := filter.NewMemoryFilter()
 
 	if cfg.Database.URL != "" {
 		db, err := postgres.NewDB(context.Background(), postgres.Config{
@@ -408,28 +393,3 @@ func (e *LogEmitter) EmitRevert(ctx context.Context, event *domain.Event, reason
 	return nil
 }
 func (e *LogEmitter) Close() error { return nil }
-
-// SimpleFilter implements Filter interface
-type SimpleFilter struct {
-	addresses map[string]bool
-}
-
-func NewSimpleFilter() *SimpleFilter              { return &SimpleFilter{addresses: make(map[string]bool)} }
-func (f *SimpleFilter) Contains(addr string) bool { return f.addresses[addr] }
-func (f *SimpleFilter) Add(addr string) error     { f.addresses[addr] = true; return nil }
-func (f *SimpleFilter) AddBatch(addrs []string) error {
-	for _, a := range addrs {
-		f.addresses[a] = true
-	}
-	return nil
-}
-func (f *SimpleFilter) Remove(addr string) error          { delete(f.addresses, addr); return nil }
-func (f *SimpleFilter) Size() int                         { return len(f.addresses) }
-func (f *SimpleFilter) Rebuild(ctx context.Context) error { return nil }
-func (f *SimpleFilter) Addresses() []string {
-	addrs := make([]string, 0, len(f.addresses))
-	for a := range f.addresses {
-		addrs = append(addrs, a)
-	}
-	return addrs
-}

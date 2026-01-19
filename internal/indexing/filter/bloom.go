@@ -1,4 +1,4 @@
-// Package filter provides a shared bloom filter for memory-efficient address filtering.
+// Package filter provides address filtering implementations.
 package filter
 
 import (

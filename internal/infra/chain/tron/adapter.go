@@ -10,7 +10,7 @@ import (
 	logger "log/slog"
 
 	"github.com/vietddude/watcher/internal/core/domain"
-	"github.com/vietddude/watcher/internal/infra/chain/filter"
+	"github.com/vietddude/watcher/internal/indexing/filter"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 )
 

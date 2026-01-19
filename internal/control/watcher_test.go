@@ -4,18 +4,20 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/vietddude/watcher/internal/core/config"
 )
 
 func TestWatcher_Lifecycle(t *testing.T) {
 	// Setup Config
 	cfg := Config{
 		Port: 0, // Random port
-		Chains: []ChainConfig{
+		Chains: []config.ChainConfig{
 			{
 				ChainID:        "test-chain-1",
 				FinalityBlocks: 5,
 				ScanInterval:   100 * time.Millisecond,
-				Providers:      []ProviderConfig{{Name: "test", URL: "http://localhost:8545"}},
+				Providers:      []config.ProviderConfig{{Name: "test", URL: "http://localhost:8545"}},
 			},
 		},
 	}
@@ -66,9 +68,9 @@ func TestWatcher_Lifecycle(t *testing.T) {
 func TestWatcher_MultiChain(t *testing.T) {
 	cfg := Config{
 		Port: 0,
-		Chains: []ChainConfig{
-			{ChainID: "chain-1", FinalityBlocks: 1, Providers: []ProviderConfig{{Name: "p1", URL: "http://loc1"}}},
-			{ChainID: "chain-2", FinalityBlocks: 1, Providers: []ProviderConfig{{Name: "p2", URL: "http://loc2"}}},
+		Chains: []config.ChainConfig{
+			{ChainID: "chain-1", FinalityBlocks: 1, Providers: []config.ProviderConfig{{Name: "p1", URL: "http://loc1"}}},
+			{ChainID: "chain-2", FinalityBlocks: 1, Providers: []config.ProviderConfig{{Name: "p2", URL: "http://loc2"}}},
 		},
 	}
 

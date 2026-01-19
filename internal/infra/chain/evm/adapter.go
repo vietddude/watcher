@@ -11,13 +11,14 @@ import (
 	logger "log/slog"
 
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/indexing/filter"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 )
 
 type EVMAdapter struct {
 	chainID        string
 	rpcProvider    rpc.Provider
-	bloomFilter    *BloomFilter
+	bloomFilter    *filter.BloomFilter
 	finalityBlocks uint64
 	log            logger.Logger
 }
@@ -26,7 +27,7 @@ func NewEVMAdapter(chainID string, provider rpc.Provider, finalityBlocks uint64)
 	return &EVMAdapter{
 		chainID:        chainID,
 		rpcProvider:    provider,
-		bloomFilter:    NewBloomFilter(),
+		bloomFilter:    filter.NewBloomFilter(),
 		finalityBlocks: finalityBlocks,
 		log:            *logger.Default(),
 	}

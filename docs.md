@@ -850,26 +850,13 @@ CRITICAL:
 
 **Indexing Metrics:**
 - blocks_processed_total
-- blocks_per_second
-- current_block_lag
-- missing_blocks_count
-- failed_blocks_count
+- chain_latest_block
+- indexer_latest_block
 
 **RPC Metrics:**
 - rpc_calls_total (by chain, provider, method)
 - rpc_errors_total (by error type)
 - rpc_latency_seconds (percentiles)
-- rpc_quota_used_percent
-
-**Event Metrics:**
-- events_emitted_total (by type)
-- events_failed_total
-- event_emit_latency_seconds
-
-**Reorg Metrics:**
-- reorgs_detected_total
-- reorg_depth (histogram)
-- reorg_recovery_time_seconds
 
 ### 12.2 Logging Strategy
 

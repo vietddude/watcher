@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/config"
 	"github.com/vietddude/watcher/internal/indexing/backfill"
 )
 
@@ -12,12 +13,12 @@ func TestWatcher_BackfillWiring(t *testing.T) {
 	// Setup Config with Backfill enabled
 	cfg := Config{
 		Port: 0,
-		Chains: []ChainConfig{
+		Chains: []config.ChainConfig{
 			{
 				ChainID:        "test-backfill-chain",
 				FinalityBlocks: 1,
 				ScanInterval:   100 * time.Millisecond,
-				Providers:      []ProviderConfig{{Name: "test", URL: "http://localhost:8545"}},
+				Providers:      []config.ProviderConfig{{Name: "test", URL: "http://localhost:8545"}},
 			},
 		},
 		Backfill: backfill.ProcessorConfig{

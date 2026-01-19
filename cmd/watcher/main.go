@@ -61,7 +61,7 @@ func main() {
 	// Transform config
 	controlCfg := control.Config{
 		Port:                cfg.Server.Port,
-		Chains:              make([]control.ChainConfig, len(cfg.Chains)),
+		Chains:              make([]config.ChainConfig, len(cfg.Chains)),
 		RescanRangesEnabled: *rescanRanges,
 		Redis: redisclient.Config{
 			URL:      cfg.Redis.URL,
@@ -70,15 +70,15 @@ func main() {
 	}
 
 	for i, c := range cfg.Chains {
-		providers := make([]control.ProviderConfig, len(c.Providers))
+		providers := make([]config.ProviderConfig, len(c.Providers))
 		for j, p := range c.Providers {
-			providers[j] = control.ProviderConfig{
+			providers[j] = config.ProviderConfig{
 				Name: p.Name,
 				URL:  p.URL,
 			}
 		}
-		controlCfg.Chains[i] = control.ChainConfig{
-			ChainID:        c.ID,
+		controlCfg.Chains[i] = config.ChainConfig{
+			ChainID:        c.ChainID,
 			Type:           c.Type,
 			InternalCode:   c.InternalCode,
 			FinalityBlocks: c.FinalityBlocks,
