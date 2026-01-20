@@ -90,6 +90,9 @@ type BatchRequest = provider.BatchRequest
 // BatchResponse represents a single response from a batch call.
 type BatchResponse = provider.BatchResponse
 
+// Operation represents an RPC operation to execute (transport-agnostic).
+type Operation = provider.Operation
+
 // Provider status constants
 const (
 	StatusHealthy   = provider.StatusHealthy

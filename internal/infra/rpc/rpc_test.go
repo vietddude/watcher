@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
 func TestRPC(t *testing.T) {
@@ -114,6 +115,22 @@ func (m *MockProvider) HasQuotaRemaining() bool {
 	return true
 }
 
+func (m *MockProvider) HasCapacity(cost int) bool {
+	return true
+}
+
+func (m *MockProvider) Execute(ctx context.Context, op provider.Operation) (any, error) {
+	m.callCount++
+	if m.shouldFail {
+		return nil, fmt.Errorf("mock provider %s failed", m.name)
+	}
+	// If Invoke is set, use it; otherwise return success
+	if op.Invoke != nil {
+		return op.Invoke(ctx)
+	}
+	return "success_result", nil
+}
+
 func TestRPCFallback(t *testing.T) {
 	// 1. Setup Mock Providers
 	// Primary: Fails
@@ -138,7 +155,7 @@ func TestRPCFallback(t *testing.T) {
 	// So p1 should be called 5 times, then fail.
 	// Then p2 should be called 1 time and succeed.
 	ctx := context.Background()
-	result, err := client.CallWithFailover(ctx, "test_method", nil)
+	result, err := client.Call(ctx, "test_method", nil)
 
 	if err != nil {
 		t.Fatalf("Expected success, got error: %v", err)

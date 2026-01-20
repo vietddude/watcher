@@ -13,6 +13,25 @@ import (
 	"time"
 )
 
+// Operation represents an RPC operation to execute.
+// It abstracts the transport layer for unified routing/budget logic.
+type Operation struct {
+	// Name identifies the operation (e.g., "eth_blockNumber", "GetBlock")
+	Name string
+
+	// Cost is the quota cost for this operation (default 1)
+	Cost int
+
+	// Params for HTTP JSON-RPC calls.
+	// NOTE: For HTTP providers, if Invoke is NOT set, these Params are used with Name.
+	Params []any
+
+	// Invoke is the actual operation to execute.
+	// NOTE: For gRPC providers, this is REQUIRED and wraps the generated client call.
+	// NOTE: For HTTP providers, if set, this takes precedence over Params.
+	Invoke func(ctx context.Context) (any, error)
+}
+
 // Provider defines the core interface for any RPC provider (HTTP or gRPC).
 // It serves as the base abstraction for health checking, metrics, and lifecycle management.
 type Provider interface {
@@ -27,6 +46,12 @@ type Provider interface {
 
 	// HasQuotaRemaining checks if the provider has not exceeded its rate limits
 	HasQuotaRemaining() bool
+
+	// HasCapacity checks if the provider has capacity for the given cost
+	HasCapacity(cost int) bool
+
+	// Execute performs the operation with monitoring and error handling
+	Execute(ctx context.Context, op Operation) (any, error)
 
 	// Close cleans up resources
 	Close() error

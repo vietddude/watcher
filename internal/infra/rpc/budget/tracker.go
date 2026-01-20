@@ -288,8 +288,6 @@ func (bt *DefaultBudgetTracker) resetUnsafe(now time.Time) {
 		budget.callsThisHour = 0
 		budget.hourStartTime = now
 		budget.providerCalls = make(map[string]int)
-		// Maintain methodCalls or providerAllocations?
-		// providerAllocations should persist. methodCalls removed as unused in simplified version.
 	}
 
 	bt.resetTime = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())

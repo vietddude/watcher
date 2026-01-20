@@ -124,6 +124,46 @@ func (p *CoordinatedProvider) HasQuotaRemaining() bool {
 	return prov.HasQuotaRemaining()
 }
 
+// HasCapacity checks if the coordinated provider has capacity for the given cost.
+func (p *CoordinatedProvider) HasCapacity(cost int) bool {
+	prov, err := p.coordinator.GetBestProvider(p.chainID)
+	if err != nil {
+		return false
+	}
+	return prov.HasCapacity(cost)
+}
+
+// Execute performs a coordinated operation with failover and monitoring.
+func (p *CoordinatedProvider) Execute(ctx context.Context, op provider.Operation) (any, error) {
+	start := time.Now()
+
+	// Get provider name for metrics
+	prov, err := p.coordinator.GetBestProvider(p.chainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider: %w", err)
+	}
+
+	providerName := prov.GetName()
+	opName := op.Name
+	if opName == "" {
+		opName = "operation"
+	}
+
+	// Execute the operation
+	result, err := prov.Execute(ctx, op)
+
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, opName).Inc()
+	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, opName).Observe(duration)
+
+	if err != nil {
+		metrics.RPCErrorsTotal.WithLabelValues(p.chainName, providerName, "execute_error").Inc()
+	}
+
+	return result, err
+}
+
 // Close closes the underlying coordinator (which might verify resources).
 func (p *CoordinatedProvider) Close() error {
 	return nil

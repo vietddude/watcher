@@ -202,6 +202,26 @@ func (p *HTTPProvider) BatchCall(
 	return responses, nil
 }
 
+// Execute performs an operation using HTTP JSON-RPC.
+// For HTTP provider, it uses op.Name and op.Params to make a Call.
+// If op.Invoke is set and op.Params is nil, it will use Invoke instead.
+func (p *HTTPProvider) Execute(ctx context.Context, op Operation) (any, error) {
+	// If Invoke is set and Params is nil, use Invoke (for custom operations)
+	if op.Invoke != nil && op.Params == nil {
+		start := time.Now()
+		result, err := op.Invoke(ctx)
+		if err != nil {
+			p.RecordFailure()
+			return nil, err
+		}
+		p.RecordSuccess(time.Since(start))
+		return result, nil
+	}
+
+	// Standard HTTP JSON-RPC call using op.Name and op.Params
+	return p.Call(ctx, op.Name, op.Params)
+}
+
 // Close cleans up resources.
 func (p *HTTPProvider) Close() error {
 	p.httpClient.CloseIdleConnections()

@@ -64,9 +64,16 @@ func (m *MockProvider) GetName() string { return m.Name }
 func (m *MockProvider) GetHealth() provider.HealthStatus {
 	return provider.HealthStatus{Available: true}
 }
-func (m *MockProvider) IsAvailable() bool       { return true }
-func (m *MockProvider) HasQuotaRemaining() bool { return true }
-func (m *MockProvider) Close() error            { return nil }
+func (m *MockProvider) IsAvailable() bool         { return true }
+func (m *MockProvider) HasQuotaRemaining() bool   { return true }
+func (m *MockProvider) HasCapacity(cost int) bool { return true }
+func (m *MockProvider) Execute(ctx context.Context, op provider.Operation) (any, error) {
+	if op.Invoke != nil {
+		return op.Invoke(ctx)
+	}
+	return "success", nil
+}
+func (m *MockProvider) Close() error { return nil }
 
 func TestCoordinator_Rotation(t *testing.T) {
 	tracker := NewBudgetTracker(1000, map[string]float64{"eth": 1.0})

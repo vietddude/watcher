@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // GRPCProvider implements Provider for gRPC.
@@ -63,6 +65,60 @@ func NewGRPCProvider(ctx context.Context, name, endpoint string) (*GRPCProvider,
 // This allows using generated gRPC clients.
 func (p *GRPCProvider) Conn() *grpc.ClientConn {
 	return p.conn
+}
+
+// Execute performs a gRPC operation with monitoring.
+// For gRPC, the operation's Invoke function should wrap the generated client call.
+// Example:
+//
+//	op := provider.Operation{
+//	    Name: "GetBlock",
+//	    Invoke: func(ctx context.Context) (any, error) {
+//	        return grpcClient.GetBlock(ctx, &pb.GetBlockRequest{Number: 123})
+//	    },
+//	}
+//	result, err := provider.Execute(ctx, op)
+func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
+	if op.Invoke == nil {
+		return nil, fmt.Errorf("gRPC operation requires Invoke function")
+	}
+
+	const maxRetries = 3
+	var lastErr error
+
+	start := time.Now()
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Simple backoff: 100ms, 200ms
+			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
+		}
+
+		result, err := op.Invoke(ctx)
+		if err == nil {
+			p.RecordSuccess(time.Since(start))
+			return result, nil
+		}
+
+		lastErr = err
+
+		// check if retryable
+		if !isRetryableGRPCError(err) {
+			break
+		}
+	}
+
+	p.RecordFailure()
+	return nil, lastErr
+}
+
+func isRetryableGRPCError(err error) bool {
+	st, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	code := st.Code()
+	return code == codes.Unavailable || code == codes.ResourceExhausted
 }
 
 // Close cleans up resources.

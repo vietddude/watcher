@@ -103,3 +103,19 @@ func (p *BaseProvider) RecordFailure() {
 		p.health.Available = false
 	}
 }
+
+// HasCapacity checks if the provider has capacity for the given cost.
+func (p *BaseProvider) HasCapacity(cost int) bool {
+	if cost <= 0 {
+		cost = 1
+	}
+
+	status := p.Monitor.CheckProviderStatus()
+	if status == StatusThrottled || status == StatusBlocked {
+		return false
+	}
+
+	stats := p.Monitor.GetStats()
+	// Check if we have enough headroom for this cost
+	return stats.UsagePercentage < 95
+}

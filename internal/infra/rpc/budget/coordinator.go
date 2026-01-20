@@ -216,11 +216,6 @@ func (c *Coordinator) ForceRotate(chainID, currentProviderName string) (provider
 	c.lastRotationTime[chainID] = time.Time{}
 	c.mu.Unlock()
 
-	// Call RotateIfNeeded which will now pass the time check
-	// We need to fetch the provider object first, or just use name logic?
-	// RotateIfNeeded requires a Provider interface.
-	// Let's implement a simpler selection here.
-
 	newProvider, err := c.GetBestProvider(chainID)
 	if err != nil {
 		return nil, err
@@ -318,10 +313,6 @@ func (c *Coordinator) Call(
 		}
 
 		// If Failover or Retry (exhausted), we rotate
-		// Note: CallWithRetry already retried MaxAttempts times for ActionRetry errors.
-		// If it failed, it means the provider is persistently failing.
-		// So we treat ActionRetry failure exhausted as a Failover trigger here.
-
 		if attempt < MaxFailoverAttempts-1 {
 			// Rotate to next provider
 			nextP, rotErr := c.ForceRotate(chainID, p.GetName())
@@ -334,6 +325,64 @@ func (c *Coordinator) Call(
 	}
 
 	return nil, fmt.Errorf("call failed after %d failovers: %w", MaxFailoverAttempts, lastErr)
+}
+
+// Execute performs an operation with coordinated budget checking and failover.
+// This is the new entry point for Operation-based calls (supporting both HTTP and gRPC).
+func (c *Coordinator) Execute(
+	ctx context.Context,
+	chainID string,
+	op provider.Operation,
+) (any, error) {
+	// 1. Budget Throttling
+	if !c.budget.CanMakeCall(chainID) {
+		if delay := c.budget.GetThrottleDelay(chainID); delay > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+	}
+
+	// 2. Get Initial Provider
+	p, err := c.GetBestProvider(chainID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Execution Loop (Failover only)
+	// Providers are responsible for their own internal retries (e.g., GRPCProvider).
+	// We handles rotating to a different provider if the current one fails completely.
+	const MaxFailoverAttempts = 3
+	var lastErr error
+
+	for attempt := 0; attempt < MaxFailoverAttempts; attempt++ {
+		// Execute on provider
+		result, err := p.Execute(ctx, op)
+
+		if err == nil {
+			// Only record usage on success
+			c.RecordRequest(chainID, p.GetName(), op.Name)
+			return result, nil
+		}
+
+		// Handle Failure
+		c.router.RecordFailure(p.GetName(), err)
+		lastErr = err
+
+		// Check if we should failover
+		if attempt < MaxFailoverAttempts-1 {
+			// Rotate to next provider
+			nextP, rotErr := c.ForceRotate(chainID, p.GetName())
+			if rotErr != nil {
+				break
+			}
+			p = nextP
+		}
+	}
+
+	return nil, fmt.Errorf("execute failed after %d failovers: %w", MaxFailoverAttempts, lastErr)
 }
 
 // CallWithCoordination is deprecated. Use Call instead.

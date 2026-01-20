@@ -17,6 +17,16 @@ type Client struct {
 	coordinator *budget.Coordinator
 }
 
+// RPCClient is the interface for making RPC calls.
+// This interface allows for easy mocking in tests while production code uses *Client.
+type RPCClient interface {
+	// Execute performs an operation (HTTP or gRPC).
+	Execute(ctx context.Context, op Operation) (any, error)
+
+	// Deprecated: Use Execute instead.
+	Call(ctx context.Context, method string, params []any) (any, error)
+}
+
 // NewClient creates a new RPC client.
 // It automatically initializes a default Coordinator.
 func NewClient(chainID string, router routing.Router, b budget.BudgetTracker) *Client {
@@ -40,10 +50,10 @@ func (c *Client) Call(ctx context.Context, method string, params []any) (any, er
 	return c.coordinator.Call(ctx, c.chainID, method, params)
 }
 
-// CallWithFailover executes an RPC call with failover logic.
-// This is now an alias for Call, as Call includes robust failover.
-func (c *Client) CallWithFailover(ctx context.Context, method string, params []any) (any, error) {
-	return c.Call(ctx, method, params)
+// Execute performs an operation with automatic failover and retry.
+// This supports both HTTP JSON-RPC and gRPC generated clients.
+func (c *Client) Execute(ctx context.Context, op Operation) (any, error) {
+	return c.coordinator.Execute(ctx, c.chainID, op)
 }
 
 // ForceRotation forces a provider rotation.
