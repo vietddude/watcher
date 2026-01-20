@@ -137,20 +137,20 @@ func (p *CoordinatedProvider) HasCapacity(cost int) bool {
 func (p *CoordinatedProvider) Execute(ctx context.Context, op provider.Operation) (any, error) {
 	start := time.Now()
 
-	// Get provider name for metrics
-	prov, err := p.coordinator.GetBestProvider(p.chainID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get provider: %w", err)
+	// Get provider name for metrics (before execution)
+	prov, _ := p.coordinator.GetBestProvider(p.chainID)
+	providerName := "unknown"
+	if prov != nil {
+		providerName = prov.GetName()
 	}
 
-	providerName := prov.GetName()
 	opName := op.Name
 	if opName == "" {
 		opName = "operation"
 	}
 
-	// Execute the operation
-	result, err := prov.Execute(ctx, op)
+	// Execute through coordinator (which handles failover AND budget tracking)
+	result, err := p.coordinator.Execute(ctx, p.chainID, op)
 
 	// Record metrics
 	duration := time.Since(start).Seconds()

@@ -406,26 +406,45 @@ func (c *Coordinator) GetBudget() BudgetTracker {
 
 // UpdateMetrics updates Prometheus metrics for all providers.
 // Call this periodically (e.g., every 10 seconds) from a background goroutine.
-func (c *Coordinator) UpdateMetrics(chainID string) {
+func (c *Coordinator) UpdateMetrics(chainID, chainName string) {
 	providers := c.router.GetAllProviders(chainID)
 
 	for _, p := range providers {
+		// 1. Update Budget Metrics (Universal)
+		// This comes from the budget tracker and is available for all providers (HTTP, GRPC, etc.)
+		budgetStats := c.budget.GetProviderUsage(chainID, p.GetName())
+		metrics.RPCQuotaRemaining.WithLabelValues(chainName, p.GetName()).
+			Set(float64(budgetStats.RemainingCalls))
+
+		// 2. Update Provider-Specific Metrics
+		// Try to get detailed stats from HTTPProvider first
 		httpProv, ok := p.(*provider.HTTPProvider)
-		if !ok {
+		if ok {
+			stats := httpProv.Monitor.GetStats()
+			healthScore := httpProv.Monitor.GetHealthScore()
+
+			metrics.RPCProviderHealthScore.WithLabelValues(chainName, p.GetName()).Set(healthScore)
+			metrics.RPCProviderQuotaUsage.WithLabelValues(chainName, p.GetName()).
+				Set(stats.UsagePercentage / 100.0)
+			metrics.RPCProviderLatencySeconds.WithLabelValues(chainName, p.GetName()).
+				Set(stats.AverageLatency.Seconds())
 			continue
 		}
 
-		stats := httpProv.Monitor.GetStats()
-		healthScore := httpProv.Monitor.GetHealthScore()
-		budgetStats := c.budget.GetProviderUsage(chainID, p.GetName())
+		// Fallback for generic providers (e.g. GRPC)
+		health := p.GetHealth()
+		// HealthScore is not directly available on generic interface, default to 100 if available
+		healthScore := 0.0
+		if health.Available {
+			healthScore = 100.0 // Simplified assumption
+		}
+		metrics.RPCProviderHealthScore.WithLabelValues(chainName, p.GetName()).Set(healthScore)
 
-		// Update Prometheus gauges
-		metrics.RPCProviderHealthScore.WithLabelValues(chainID, p.GetName()).Set(healthScore)
-		metrics.RPCProviderQuotaUsage.WithLabelValues(chainID, p.GetName()).
-			Set(stats.UsagePercentage / 100.0)
-		metrics.RPCProviderLatencySeconds.WithLabelValues(chainID, p.GetName()).
-			Set(stats.AverageLatency.Seconds())
-		metrics.RPCQuotaRemaining.WithLabelValues(chainID, p.GetName()).
-			Set(float64(budgetStats.RemainingCalls))
+		if health.MonitorStats != nil {
+			metrics.RPCProviderQuotaUsage.WithLabelValues(chainName, p.GetName()).
+				Set(health.MonitorStats.UsagePercentage / 100.0)
+			metrics.RPCProviderLatencySeconds.WithLabelValues(chainName, p.GetName()).
+				Set(health.MonitorStats.AverageLatency.Seconds())
+		}
 	}
 }

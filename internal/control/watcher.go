@@ -40,8 +40,11 @@ type Watcher struct {
 	healthMon     *health.Monitor
 	healthServer  *health.Server
 	store         *memory.MemoryStorage
+	db            *postgres.DB
 	redisClient   *redisclient.Client
 	log           *slog.Logger
+	coordinators  map[string]*rpc.Coordinator
+	chainNames    map[string]string
 }
 
 // Config holds the application configuration.
@@ -66,11 +69,13 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	var missingRepo storage.MissingBlockRepository
 	var failedRepo storage.FailedBlockRepository
 	var store *memory.MemoryStorage // Only for cleanup if used
+	var db *postgres.DB
 
 	simpleFilter := filter.NewMemoryFilter()
 
 	if cfg.Database.URL != "" {
-		db, err := postgres.NewDB(context.Background(), postgres.Config{
+		var err error
+		db, err = postgres.NewDB(context.Background(), postgres.Config{
 			URL:      cfg.Database.URL,
 			MaxConns: cfg.Database.MaxConns,
 			MinConns: cfg.Database.MinConns,
@@ -143,12 +148,32 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	fetcher := &MultiChainFetcher{adapters: make(map[string]chain.Adapter)}
 	indexers := make(map[string]indexer.Indexer)
 	backfillers := make(map[string]*backfill.Processor)
+	coordinators := make(map[string]*rpc.Coordinator)
 	chainIDs := make([]string, 0, len(cfg.Chains))
 	chainNames := make(map[string]string)
+	chainProviders := make(map[string][]string)
+	scanIntervals := make(map[string]time.Duration)
+
+	// Initialize with known constants
+	for id, name := range domain.ChainIDToName {
+		chainNames[id] = name
+	}
 
 	for _, chainCfg := range cfg.Chains {
 		chainID := chainCfg.ChainID
-		chainNames[chainID] = chainCfg.InternalCode
+		if chainCfg.InternalCode != "" {
+			chainNames[chainID] = chainCfg.InternalCode
+			slog.Info("Mapping ChainID to Name", "chainID", chainID, "name", chainCfg.InternalCode)
+		} else {
+			slog.Warn("Chain config missing InternalCode", "chainID", chainID)
+		}
+		scanIntervals[chainID] = chainCfg.ScanInterval
+
+		var providers []string
+		for _, p := range chainCfg.Providers {
+			providers = append(providers, p.Name)
+		}
+		chainProviders[chainID] = providers
 
 		// 3. Initialize RPC Router & Coordinator
 		router := rpc.NewRouter(budgetTracker)
@@ -179,6 +204,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 			chainCfg.InternalCode,
 			coordinator,
 		)
+		coordinators[chainID] = coordinator
 
 		// Use EVM adapter by default with CoordinatedProvider
 		var adapter chain.Adapter
@@ -251,11 +277,13 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	// 6. Initialize Health Monitor
 	healthMon := health.NewMonitor(
 		chainNames,
+		chainProviders,
 		cursorMgr,
 		missingRepo,
 		failedRepo,
 		budgetTracker,
 		fetcher,
+		scanIntervals,
 	)
 
 	healthServer := health.NewServer(healthMon, cfg.Port)
@@ -305,8 +333,11 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		healthMon:     healthMon,
 		healthServer:  healthServer,
 		store:         store,
+		db:            db,
 		redisClient:   redisClient,
 		log:           slog.Default(),
+		coordinators:  coordinators,
+		chainNames:    chainNames,
 	}, nil
 }
 
@@ -322,6 +353,11 @@ func (w *Watcher) Start(ctx context.Context) error {
 	// Start Health Monitor Background Tasks
 	go w.healthMon.Start(ctx)
 
+	// Start DB Metrics Collector
+	if w.db != nil {
+		w.db.StartMetricsCollector(ctx)
+	}
+
 	// Start Indexers and Backfillers
 	for id, idx := range w.indexers {
 		w.log.Info("Starting indexer", "chain", id)
@@ -335,7 +371,11 @@ func (w *Watcher) Start(ctx context.Context) error {
 		if bf, ok := w.backfillers[id]; ok {
 			w.log.Info("Starting backfill processor", "chain", id)
 			go func(id string, processor *backfill.Processor) {
-				if err := processor.Run(ctx, id); err != nil {
+				name := w.chainNames[id]
+				if name == "" {
+					name = id
+				}
+				if err := processor.Run(ctx, id, name); err != nil {
 					w.log.Error("Backfill processor failed", "chain", id, "error", err)
 				}
 			}(id, bf)
@@ -357,6 +397,9 @@ func (w *Watcher) Start(ctx context.Context) error {
 		w.log.Info("Starting pruner", "chain", id)
 		go p.Start(ctx)
 	}
+
+	// Start RPC Metrics Updater
+	go w.runMetricsUpdater(ctx)
 
 	return nil
 }
@@ -411,3 +454,24 @@ func (e *LogEmitter) EmitRevert(ctx context.Context, event *domain.Event, reason
 	return nil
 }
 func (e *LogEmitter) Close() error { return nil }
+
+func (w *Watcher) runMetricsUpdater(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for chainID, coord := range w.coordinators {
+				name := w.chainNames[chainID]
+				if name == "" {
+					name = chainID
+				}
+				coord.UpdateMetrics(chainID, name)
+				slog.Debug("Updating RPC metrics", "chainID", chainID, "label_name", name)
+			}
+		}
+	}
+}

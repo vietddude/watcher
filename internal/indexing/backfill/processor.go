@@ -70,7 +70,7 @@ func (p *Processor) SetBudgetTracker(b rpc.BudgetTracker) {
 // ProcessOne fetches ONE missing block, respecting rate limits.
 // Returns ErrQuotaExceeded if quota is too high.
 // Returns ErrNoMissingBlocks if queue is empty.
-func (p *Processor) ProcessOne(ctx context.Context, chainID string) error {
+func (p *Processor) ProcessOne(ctx context.Context, chainID, chainName string) error {
 	// Check rate limit
 	if !p.canProcess(chainID) {
 		delay := p.getDelay(chainID)
@@ -117,7 +117,7 @@ func (p *Processor) ProcessOne(ctx context.Context, chainID string) error {
 		if err := p.missingRepo.MarkCompleted(ctx, missing.ID); err != nil {
 			return fmt.Errorf("failed to mark completed: %w", err)
 		}
-		p.recordProcessed(chainID)
+		p.recordProcessed(chainID, chainName)
 	} else {
 		if missing.RetryCount >= p.config.MaxRetries {
 			p.missingRepo.MarkFailed(ctx, missing.ID, "max retries exceeded")
@@ -129,13 +129,13 @@ func (p *Processor) ProcessOne(ctx context.Context, chainID string) error {
 }
 
 // Run starts background processing. Blocks until context is cancelled.
-func (p *Processor) Run(ctx context.Context, chainID string) error {
+func (p *Processor) Run(ctx context.Context, chainID, chainName string) error {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
 	// Initial update
 	if count, err := p.missingRepo.Count(ctx, chainID); err == nil {
-		metrics.BackfillBlocksQueued.WithLabelValues(chainID).Set(float64(count))
+		metrics.BackfillBlocksQueued.WithLabelValues(chainName).Set(float64(count))
 	}
 
 	for {
@@ -144,10 +144,13 @@ func (p *Processor) Run(ctx context.Context, chainID string) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if count, err := p.missingRepo.Count(ctx, chainID); err == nil {
-				metrics.BackfillBlocksQueued.WithLabelValues(chainID).Set(float64(count))
+				metrics.BackfillBlocksQueued.WithLabelValues(chainName).Set(float64(count))
+			} else {
+				// Log error to ensure visibility? processor doesn't have logger, but Count shouldn't fail often.
+				// We can try to init metrics at least.
 			}
 		default:
-			err := p.ProcessOne(ctx, chainID)
+			err := p.ProcessOne(ctx, chainID, chainName)
 			if errors.Is(err, ErrNoMissingBlocks) {
 				// Queue empty, wait before checking again
 				time.Sleep(30 * time.Second)
@@ -208,7 +211,7 @@ func (p *Processor) getDelay(chainID string) time.Duration {
 	return p.config.MinInterval - elapsed
 }
 
-func (p *Processor) recordProcessed(chainID string) {
+func (p *Processor) recordProcessed(chainID, chainName string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -228,7 +231,7 @@ func (p *Processor) recordProcessed(chainID string) {
 	p.stats[chainID].LastProcessed = time.Now()
 
 	// Update metrics
-	metrics.BackfillBlocksProcessed.WithLabelValues(chainID).Inc()
+	metrics.BackfillBlocksProcessed.WithLabelValues(chainName).Inc()
 }
 
 func (p *Processor) recordFailed(chainID string) {

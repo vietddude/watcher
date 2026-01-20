@@ -42,9 +42,20 @@ func (p *Pipeline) Start(ctx context.Context) error {
 
 	// Process immediately on startup, then use ticker
 	for {
-		if err := p.processNextBlock(ctx); err != nil {
+		shouldContinue, err := p.processNextBlock(ctx)
+		if err != nil {
 			slog.Error("Block processing error", "error", err)
 			time.Sleep(time.Second)
+		} else if shouldContinue {
+			// Burst mode: don't wait for ticker
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-p.stop:
+				return nil
+			default:
+				continue
+			}
 		}
 
 		select {
@@ -77,11 +88,12 @@ func (p *Pipeline) GetStatus() Status {
 }
 
 // processNextBlock executes one step of the pipeline
-func (p *Pipeline) processNextBlock(ctx context.Context) error {
+// Returns true if we should process the next block immediately (behind head)
+func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	// 1. Get current position
 	cursor, err := p.cfg.Cursor.Get(ctx, p.cfg.ChainID)
 	if err != nil {
-		return fmt.Errorf("failed to get cursor: %w", err)
+		return false, fmt.Errorf("failed to get cursor: %w", err)
 	}
 
 	if cursor == nil {
@@ -89,7 +101,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		slog.Info("Cursor not found, initializing...")
 		latestBlock, latestErr := p.cfg.ChainAdapter.GetLatestBlock(ctx)
 		if latestErr != nil {
-			return fmt.Errorf("failed to get latest block for initialization: %w", latestErr)
+			return false, fmt.Errorf("failed to get latest block for initialization: %w", latestErr)
 		}
 		// Start from latest block minus some buffer to avoid missing recent blocks
 		startBlock := latestBlock
@@ -98,7 +110,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		}
 		cursor, err = p.cfg.Cursor.Initialize(ctx, p.cfg.ChainID, startBlock)
 		if err != nil {
-			return fmt.Errorf("failed to initialize cursor: %w", err)
+			return false, fmt.Errorf("failed to initialize cursor: %w", err)
 		}
 		slog.Info("Cursor initialized", "startBlock", startBlock)
 	}
@@ -109,11 +121,11 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	block, err := p.cfg.ChainAdapter.GetBlock(ctx, targetBlockNum)
 	if err != nil {
 		// Recovery: Handle transient/permanent errors
-		return p.handleError(ctx, targetBlockNum, err)
+		return false, p.handleError(ctx, targetBlockNum, err)
 	}
 	if block == nil {
 		// No new block yet (Adapter returns nil for future block)
-		return nil
+		return false, nil
 	}
 
 	// 3. Reorg Detection
@@ -125,16 +137,16 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		block.ParentHash,
 	)
 	if err != nil {
-		return p.handleError(ctx, targetBlockNum, fmt.Errorf("reorg check failed: %w", err))
+		return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("reorg check failed: %w", err))
 	}
 
 	if reorgInfo.Detected {
 		// Handle Reorg!
 		if _, err := p.cfg.ReorgHandler.Rollback(ctx, p.cfg.ChainID, reorgInfo.FromBlock, reorgInfo.SafeBlock, reorgInfo.SafeHash); err != nil {
-			return fmt.Errorf("rollback failed: %w", err)
+			return false, fmt.Errorf("rollback failed: %w", err)
 		}
 		// Return to loop to pick up from safe block
-		return nil
+		return true, nil // Retry immediately
 	}
 
 	// 4. Optimization: Check PreFilter if supported
@@ -159,7 +171,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 		var err error
 		txs, err = p.cfg.ChainAdapter.GetTransactions(ctx, block)
 		if err != nil {
-			return p.handleError(ctx, targetBlockNum, fmt.Errorf("fetch txs failed: %w", err))
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("fetch txs failed: %w", err))
 		}
 	}
 
@@ -241,7 +253,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	// Emit events (FinalityBuffer handles buffering)
 	if len(events) > 0 {
 		if err := p.cfg.Emitter.EmitBatch(ctx, events); err != nil {
-			return p.handleError(ctx, targetBlockNum, fmt.Errorf("emit failed: %w", err))
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("emit failed: %w", err))
 		}
 	}
 
@@ -258,8 +270,8 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 
 	// 7. Persist Data
 	block.ChainID = p.cfg.ChainID // Ensure ChainID matches pipeline config
-	if err := p.cfg.BlockRepo.Save(ctx, block); err != nil {
-		return p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
+	if err = p.cfg.BlockRepo.Save(ctx, block); err != nil {
+		return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
 	}
 	// Mark as processed
 	if err := p.cfg.BlockRepo.UpdateStatus(ctx, p.cfg.ChainID, block.Number, domain.BlockStatusProcessed); err != nil {
@@ -270,10 +282,14 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	// 8. Update Cursor
 	// Advance cursor to this block
 	if err := p.cfg.Cursor.Advance(ctx, p.cfg.ChainID, targetBlockNum, block.Hash); err != nil {
-		return fmt.Errorf("cursor advance failed: %w", err)
+		return false, fmt.Errorf("cursor advance failed: %w", err)
 	}
 
-	return nil
+	// Optimization: If we just processed a block successfully,
+	// and we know there are more blocks (e.g. lag > 0), return true to skip sleep.
+	// For now, we return true to indicate "check again immediately".
+	// The caller loop will enforce sleep if we hit head (GetBlock returns nil or error).
+	return true, nil
 }
 
 func (p *Pipeline) handleError(ctx context.Context, blockNum uint64, err error) error {
@@ -285,7 +301,7 @@ func (p *Pipeline) handleError(ctx context.Context, blockNum uint64, err error) 
 }
 
 func (p *Pipeline) monitorChainHead(ctx context.Context) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	for {

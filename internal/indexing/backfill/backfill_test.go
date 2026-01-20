@@ -217,7 +217,7 @@ func TestProcessor_ProcessOne_NoBlocks(t *testing.T) {
 	processor := NewProcessor(DefaultConfig(), missingRepo, fetcher)
 
 	ctx := context.Background()
-	err := processor.ProcessOne(ctx, "ethereum")
+	err := processor.ProcessOne(ctx, "ethereum", "Ethereum")
 
 	if err != ErrNoMissingBlocks {
 		t.Errorf("expected ErrNoMissingBlocks, got: %v", err)
@@ -248,7 +248,7 @@ func TestProcessor_ProcessOne_Success(t *testing.T) {
 	processor := NewProcessor(config, missingRepo, fetcher)
 
 	ctx := context.Background()
-	err := processor.ProcessOne(ctx, "ethereum")
+	err := processor.ProcessOne(ctx, "ethereum", "Ethereum")
 	if err != nil {
 		t.Fatalf("ProcessOne failed: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestProcessor_RateLimiting(t *testing.T) {
 	processor := NewProcessor(config, &mockMissingRepo{}, nil)
 
 	// Record a processed block
-	processor.recordProcessed("ethereum")
+	processor.recordProcessed("ethereum", "Ethereum")
 
 	// Should not be able to process immediately
 	if processor.canProcess("ethereum") {

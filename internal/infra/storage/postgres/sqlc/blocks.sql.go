@@ -24,8 +24,7 @@ SET
     block_hash = EXCLUDED.block_hash,
     parent_hash = EXCLUDED.parent_hash,
     block_timestamp = EXCLUDED.block_timestamp,
-    status = EXCLUDED.status,
-    updated_at = extract(epoch from now())::bigint
+    status = EXCLUDED.status
 `
 
 type CreateBlockParams struct {
@@ -209,7 +208,7 @@ func (q *Queries) GetLatestBlock(ctx context.Context, chainID string) (Block, er
 
 const updateBlockStatus = `-- name: UpdateBlockStatus :exec
 UPDATE blocks
-SET status = $1, updated_at = extract(epoch from now())::bigint
+SET status = $1
 WHERE chain_id = $2 AND block_number = $3
 `
 

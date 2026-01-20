@@ -103,6 +103,7 @@ func (bt *DefaultBudgetTracker) RecordCall(chainID, providerName, method string)
 	budget.totalCalls++
 	budget.callsThisHour++
 	budget.providerCalls[providerName]++
+
 }
 
 // GetUsage returns usage statistics for a chain.
@@ -184,6 +185,15 @@ func (bt *DefaultBudgetTracker) GetProviderUsage(chainID, providerName string) U
 		UsagePercentage: usagePercentage,
 		NextResetAt:     bt.resetTime,
 	}
+}
+
+// getChainIDs returns all chain IDs in chainUsage (for debugging).
+func (bt *DefaultBudgetTracker) getChainIDs() []string {
+	ids := make([]string, 0, len(bt.chainUsage))
+	for k := range bt.chainUsage {
+		ids = append(ids, k)
+	}
+	return ids
 }
 
 // CanMakeCall checks if a call can be made within budget.

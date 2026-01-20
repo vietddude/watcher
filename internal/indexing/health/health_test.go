@@ -11,10 +11,6 @@ import (
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
-// =============================================================================
-// Mocks
-// =============================================================================
-
 type mockFetcher struct {
 	height uint64
 	err    error
@@ -57,6 +53,10 @@ func (s *stubCursorMgr) Advance(
 	return nil
 }
 func (s *stubCursorMgr) SetState(ctx context.Context, c string, st cursor.State, r string) error {
+	return nil
+}
+
+func (s *stubCursorMgr) Jump(ctx context.Context, c string, b uint64) error {
 	return nil
 }
 
@@ -164,18 +164,16 @@ func (s *stubBudgetTracker) GetThrottleDelay(chainID string) time.Duration    { 
 func (s *stubBudgetTracker) GetUsagePercent() float64                         { return 0 }
 func (s *stubBudgetTracker) Reset()                                           {}
 
-// =============================================================================
-// Tests
-// =============================================================================
-
 func TestMonitor_Healthy(t *testing.T) {
 	monitor := NewMonitor(
 		map[string]string{"ethereum": "ETH"},
+		nil,
 		&stubCursorMgr{lag: 5},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
 		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
+		nil,
 	)
 
 	report := monitor.CheckHealth(context.Background())
@@ -189,11 +187,13 @@ func TestMonitor_Healthy(t *testing.T) {
 func TestMonitor_Degraded(t *testing.T) {
 	monitor := NewMonitor(
 		map[string]string{"ethereum": "ETH"},
+		nil,
 		&stubCursorMgr{lag: 50},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
 		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
+		nil,
 	)
 
 	report := monitor.CheckHealth(context.Background())
@@ -207,11 +207,13 @@ func TestMonitor_Degraded(t *testing.T) {
 func TestMonitor_Critical(t *testing.T) {
 	monitor := NewMonitor(
 		map[string]string{"ethereum": "ETH"},
+		nil,
 		&stubCursorMgr{lag: 200},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
 		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
+		nil,
 	)
 
 	report := monitor.CheckHealth(context.Background())

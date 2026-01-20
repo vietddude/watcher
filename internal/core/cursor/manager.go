@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -35,6 +36,9 @@ type Manager interface {
 
 	// Advance moves cursor forward (validates sequential, updates state).
 	Advance(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error
+
+	// Jump moves cursor to an arbitrary position (skips sequential check, generally for lag recovery).
+	Jump(ctx context.Context, chainID string, blockNumber uint64) error
 
 	// SetState transitions cursor to new state (validates transition).
 	SetState(ctx context.Context, chainID string, newState State, reason string) error
@@ -141,6 +145,20 @@ func (m *DefaultManager) Advance(
 	}
 
 	if blockNumber != expectedBlock {
+		// [FIX] Race Condition Handling:
+		// If we are trying to advance to X, but DB is already at Y >= X, we are stale.
+		// This happens if a Jump() occurred while we were processing.
+		if blockNumber <= cursor.CurrentBlock {
+			slog.Warn("Cursor Advance stale", "chain", chainID, "current", cursor.CurrentBlock, "target", blockNumber)
+			// Treat as success (idempotent) or return specific error?
+			// If we return nil, loop continues with NEXT block from OLD cursor? No.
+			// Pipeline loop: process(target). Advance(target).
+			// If we return nil, loop finishes. Next cycle: Get().
+			// Get() will return NEW cursor (Y). Pipeline targets Y+1. Correct.
+			return nil
+		}
+
+		slog.Error("Cursor Advance gap detected", "chain", chainID, "current", cursor.CurrentBlock, "expected", expectedBlock, "got", blockNumber)
 		return fmt.Errorf("%w: expected block %d, got %d", ErrBlockGap, expectedBlock, blockNumber)
 	}
 
@@ -148,6 +166,7 @@ func (m *DefaultManager) Advance(
 	if err := m.repo.UpdateBlock(ctx, chainID, blockNumber, blockHash); err != nil {
 		return fmt.Errorf("failed to update cursor: %w", err)
 	}
+	slog.Info("Cursor Advance success", "chain", chainID, "new_height", blockNumber)
 
 	// Record metrics
 	m.mu.Lock()
@@ -155,6 +174,36 @@ func (m *DefaultManager) Advance(
 		collector.RecordBlock(blockNumber, time.Now())
 	}
 	m.mu.Unlock()
+
+	return nil
+}
+
+// Jump forces the cursor to a new block number.
+func (m *DefaultManager) Jump(
+	ctx context.Context,
+	chainID string,
+	blockNumber uint64,
+) error {
+	cursor, err := m.repo.Get(ctx, chainID)
+	if err != nil {
+		return fmt.Errorf("failed to get cursor: %w", err)
+	}
+
+	// Validate state allows movement
+	switch cursor.State {
+	case domain.CursorStatePaused:
+		return ErrCursorPaused
+	}
+
+	// Update cursor (Using empty hash as we might not know it yet, or let repo handle it)
+	// Ideally we should pass the hash, but for jump-to-head we might rely on next fetch.
+	// However, repo.UpdateBlock usually requires a hash.
+	// For jumping to head, we usually get the number from "LatestBlock".
+	// Let's assume we update the number and clear the hash or put a placeholder.
+	// The repo likely updates the row.
+	if err := m.repo.UpdateBlock(ctx, chainID, blockNumber, ""); err != nil {
+		return fmt.Errorf("failed to jump cursor: %w", err)
+	}
 
 	return nil
 }

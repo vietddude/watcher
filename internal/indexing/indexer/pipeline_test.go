@@ -77,6 +77,11 @@ func (m *mockCursorMgr) SetState(ctx context.Context, c string, s cursor.State, 
 	return nil
 }
 
+func (m *mockCursorMgr) Jump(ctx context.Context, chainID string, blockNumber uint64) error {
+	m.current = blockNumber
+	return nil
+}
+
 // Stubs
 func (m *mockCursorMgr) Initialize(
 	ctx context.Context,
@@ -276,7 +281,7 @@ func TestPipeline_ProcessNextBlock_NormalFlow(t *testing.T) {
 	pipeline := NewPipeline(cfg)
 
 	// Run single step
-	err := pipeline.processNextBlock(context.Background())
+	_, err := pipeline.processNextBlock(context.Background())
 	if err != nil {
 		t.Fatalf("processNextBlock failed: %v", err)
 	}
@@ -331,7 +336,7 @@ func TestPipeline_ReorgDetection(t *testing.T) {
 	// The test code from previous step was minimal. Let's just test empty block return.
 	adapter.blocks = make(map[uint64]*domain.Block)
 
-	err := pipeline.processNextBlock(context.Background())
+	_, err := pipeline.processNextBlock(context.Background())
 	if err != nil {
 		t.Fatalf("expected nil error (wait), got: %v", err)
 	}
