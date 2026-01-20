@@ -67,7 +67,12 @@ func (p *CoordinatedProvider) BatchCall(
 	providerName := bestProvider.GetName()
 	start := time.Now()
 
-	result, err := bestProvider.BatchCall(ctx, requests)
+	rpcP, ok := bestProvider.(provider.RPCProvider)
+	if !ok {
+		return nil, fmt.Errorf("provider %s does not support batch calls", bestProvider.GetName())
+	}
+
+	result, err := rpcP.BatchCall(ctx, requests)
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
@@ -99,6 +104,24 @@ func (p *CoordinatedProvider) GetHealth() provider.HealthStatus {
 	}
 	// Return the health of the current best provider
 	return prov.GetHealth()
+}
+
+// IsAvailable checks if the coordinated provider has any available underlying provider.
+func (p *CoordinatedProvider) IsAvailable() bool {
+	prov, err := p.coordinator.GetBestProvider(p.chainID)
+	if err != nil {
+		return false
+	}
+	return prov.IsAvailable()
+}
+
+// HasQuotaRemaining checks if the coordinated provider has quota.
+func (p *CoordinatedProvider) HasQuotaRemaining() bool {
+	prov, err := p.coordinator.GetBestProvider(p.chainID)
+	if err != nil {
+		return false
+	}
+	return prov.HasQuotaRemaining()
 }
 
 // Close closes the underlying coordinator (which might verify resources).

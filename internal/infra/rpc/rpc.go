@@ -60,6 +60,9 @@ import (
 // Provider is the core interface for RPC endpoints.
 type Provider = provider.Provider
 
+// RPCProvider is the interface for providers that support JSON-RPC calls.
+type RPCProvider = provider.RPCProvider
+
 // HTTPProvider implements Provider for JSON-RPC over HTTP.
 type HTTPProvider = provider.HTTPProvider
 
@@ -169,12 +172,6 @@ type DefaultBudgetTracker = budget.DefaultBudgetTracker
 // UsageStats holds quota usage statistics.
 type UsageStats = budget.UsageStats
 
-// QuotaPredictor predicts when providers will exhaust their quota.
-type QuotaPredictor = budget.QuotaPredictor
-
-// PredictionStats holds prediction data for a provider.
-type PredictionStats = budget.PredictionStats
-
 // Coordinator unifies Budget and Router for coordinated decisions.
 type Coordinator = budget.Coordinator
 
@@ -190,11 +187,6 @@ type CoordinatedProvider = budget.CoordinatedProvider
 // NewBudgetTracker creates a new budget tracker.
 func NewBudgetTracker(dailyLimit int, budgetAllocation map[string]float64) *DefaultBudgetTracker {
 	return budget.NewBudgetTracker(dailyLimit, budgetAllocation)
-}
-
-// NewQuotaPredictor creates a new quota predictor.
-func NewQuotaPredictor() *QuotaPredictor {
-	return budget.NewQuotaPredictor()
 }
 
 // NewCoordinator creates a new coordinator with default config.

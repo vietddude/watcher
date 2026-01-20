@@ -5,9 +5,14 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
+
+func init() {
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+}
 
 // RotationStrategy defines how providers are rotated.
 type RotationStrategy int

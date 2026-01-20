@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/rpc/routing"
 )
@@ -14,13 +15,11 @@ import (
 type Coordinator struct {
 	mu sync.RWMutex
 
-	router    routing.Router
-	budget    BudgetTracker
-	predictor *QuotaPredictor
+	router routing.Router
+	budget BudgetTracker
 
 	proactiveRotation   bool
 	rotationThreshold   float64
-	predictionThreshold time.Duration
 	minRotationInterval time.Duration
 	lastRotationTime    map[string]time.Time
 
@@ -31,7 +30,6 @@ type Coordinator struct {
 type CoordinatorConfig struct {
 	ProactiveRotation   bool
 	RotationThreshold   float64
-	PredictionThreshold time.Duration
 	MinRotationInterval time.Duration
 }
 
@@ -40,7 +38,6 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 	return CoordinatorConfig{
 		ProactiveRotation:   true,
 		RotationThreshold:   75.0,
-		PredictionThreshold: 15 * time.Minute,
 		MinRotationInterval: 2 * time.Minute,
 	}
 }
@@ -59,10 +56,8 @@ func NewCoordinatorWithConfig(
 	return &Coordinator{
 		router:              router,
 		budget:              budget,
-		predictor:           NewQuotaPredictor(),
 		proactiveRotation:   config.ProactiveRotation,
 		rotationThreshold:   config.RotationThreshold,
-		predictionThreshold: config.PredictionThreshold,
 		minRotationInterval: config.MinRotationInterval,
 		lastRotationTime:    make(map[string]time.Time),
 	}
@@ -123,17 +118,6 @@ func (c *Coordinator) scoreProvider(chainID string, p provider.Provider) (float6
 		score -= 20
 	}
 
-	if c.proactiveRotation {
-		timeToExhaust := c.predictor.PredictTimeToExhaustion(p.GetName(), usage.RemainingCalls)
-		if timeToExhaust > 0 && timeToExhaust < c.predictionThreshold {
-			score -= 40
-			reasons = append(
-				reasons,
-				fmt.Sprintf("predicted exhaustion in %v", timeToExhaust.Round(time.Minute)),
-			)
-		}
-	}
-
 	if httpProv, ok := p.(*provider.HTTPProvider); ok {
 		stats := httpProv.Monitor.GetStats()
 
@@ -181,19 +165,11 @@ func (c *Coordinator) ShouldRotate(chainID, providerName string) (bool, string) 
 			usage.UsagePercentage, c.rotationThreshold)
 	}
 
-	if c.proactiveRotation {
-		timeToExhaust := c.predictor.PredictTimeToExhaustion(providerName, usage.RemainingCalls)
-		if timeToExhaust > 0 && timeToExhaust < c.predictionThreshold {
-			return true, fmt.Sprintf("predicted exhaustion in %v", timeToExhaust.Round(time.Minute))
-		}
-	}
-
 	return false, ""
 }
 
 // RecordRequest records a request for rate tracking.
 func (c *Coordinator) RecordRequest(chainID, providerName, method string) {
-	c.predictor.RecordRequest(providerName)
 	c.budget.RecordCall(chainID, providerName, method)
 }
 
@@ -232,45 +208,141 @@ func (c *Coordinator) SetRotationCallback(
 	c.onRotation = fn
 }
 
-// GetPredictionStats returns prediction statistics for a provider.
-func (c *Coordinator) GetPredictionStats(chainID, providerName string) PredictionStats {
-	usage := c.budget.GetProviderUsage(chainID, providerName)
-	return c.predictor.GetPredictionStats(providerName, usage.RemainingCalls)
+// ForceRotate forces a rotation to the next best provider, ignoring cooldowns.
+// This is useful for immediate failover.
+func (c *Coordinator) ForceRotate(chainID, currentProviderName string) (provider.Provider, error) {
+	c.mu.Lock()
+	// Reset rotation timer to allow immediate rotation
+	c.lastRotationTime[chainID] = time.Time{}
+	c.mu.Unlock()
+
+	// Call RotateIfNeeded which will now pass the time check
+	// We need to fetch the provider object first, or just use name logic?
+	// RotateIfNeeded requires a Provider interface.
+	// Let's implement a simpler selection here.
+
+	newProvider, err := c.GetBestProvider(chainID)
+	if err != nil {
+		return nil, err
+	}
+
+	if newProvider.GetName() == currentProviderName {
+		// If BestProvider is still the same, we force the router to rotate.
+		// Since RotateProvider is random, we try a few times to get a different one.
+		for i := 0; i < 5; i++ {
+			p, err := c.router.RotateProvider(chainID)
+			if err != nil {
+				return nil, err
+			}
+			newProvider = p
+			if newProvider.GetName() != currentProviderName {
+				break
+			}
+		}
+	}
+
+	c.mu.Lock()
+	c.lastRotationTime[chainID] = time.Now()
+	c.mu.Unlock()
+
+	if c.onRotation != nil {
+		c.onRotation(chainID, currentProviderName, newProvider.GetName(), "forced failover")
+	}
+
+	return newProvider, nil
 }
 
-// CallWithCoordination makes a call with full coordination.
-func (c *Coordinator) CallWithCoordination(
+// Call executes an RPC call with coordinated budget checking, monitoring, and smart failover.
+// This is the primary entry point for the Client.
+func (c *Coordinator) Call(
 	ctx context.Context,
 	chainID, method string,
 	params []any,
 ) (any, error) {
+	// 1. Budget Throttling (Global)
+	if !c.budget.CanMakeCall(chainID) {
+		if delay := c.budget.GetThrottleDelay(chainID); delay > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+	}
+
+	// 2. Get Initial Provider
 	p, err := c.GetBestProvider(chainID)
 	if err != nil {
 		return nil, err
 	}
 
-	if delay := c.budget.GetThrottleDelay(chainID); delay > 0 {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(delay):
+	// 3. Execution Loop (Retry & Failover)
+	// We use the RetryConfig from routing, but we manage the high-level failover here.
+	const MaxFailoverAttempts = 3
+	var lastErr error
+
+	for attempt := 0; attempt < MaxFailoverAttempts; attempt++ {
+		// Ensure provider supports RPC
+		rpcP, ok := p.(provider.RPCProvider)
+		if !ok {
+			lastErr = fmt.Errorf("provider %s does not support RPC calls", p.GetName())
+			// Try next one immediately
+			p, err = c.ForceRotate(chainID, p.GetName())
+			if err != nil {
+				return nil, err
+			}
+			continue
 		}
-	}
 
-	result, err := p.Call(ctx, method, params)
+		// Execute with internal retry (handling transient network errors)
+		start := time.Now()
+		result, err := routing.CallWithRetry(ctx, rpcP, method, params, routing.DefaultRetryConfig)
+		latency := time.Since(start)
 
-	c.RecordRequest(chainID, p.GetName(), method)
+		c.RecordRequest(chainID, p.GetName(), method)
 
-	if err == nil {
-		c.router.RecordSuccess(p.GetName(), 0)
-	} else {
+		if err == nil {
+			c.router.RecordSuccess(p.GetName(), latency) // Fix validation: passing actual latency
+			return result, nil
+		}
+
+		// Handle Failure
 		c.router.RecordFailure(p.GetName(), err)
-		if _, rotated, _ := c.RotateIfNeeded(chainID, p); rotated {
-			// Rotation happened
+		lastErr = err
+
+		// Classify Error
+		action := routing.ClassifyError(err)
+
+		if action == routing.ActionFatal {
+			return nil, err // Stop immediately
+		}
+
+		// If Failover or Retry (exhausted), we rotate
+		// Note: CallWithRetry already retried MaxAttempts times for ActionRetry errors.
+		// If it failed, it means the provider is persistently failing.
+		// So we treat ActionRetry failure exhausted as a Failover trigger here.
+
+		if attempt < MaxFailoverAttempts-1 {
+			// Rotate to next provider
+			nextP, rotErr := c.ForceRotate(chainID, p.GetName())
+			if rotErr != nil {
+				// No other provider available or rotation failed
+				break
+			}
+			p = nextP
 		}
 	}
 
-	return result, err
+	return nil, fmt.Errorf("call failed after %d failovers: %w", MaxFailoverAttempts, lastErr)
+}
+
+// CallWithCoordination is deprecated. Use Call instead.
+func (c *Coordinator) CallWithCoordination(
+	ctx context.Context,
+	chainID, method string,
+	params []any,
+) (any, error) {
+	return c.Call(ctx, chainID, method, params)
 }
 
 // GetRouter returns the underlying router.
@@ -283,7 +355,25 @@ func (c *Coordinator) GetBudget() BudgetTracker {
 	return c.budget
 }
 
-// GetPredictor returns the quota predictor.
-func (c *Coordinator) GetPredictor() *QuotaPredictor {
-	return c.predictor
+// UpdateMetrics updates Prometheus metrics for all providers.
+// Call this periodically (e.g., every 10 seconds) from a background goroutine.
+func (c *Coordinator) UpdateMetrics(chainID string) {
+	providers := c.router.GetAllProviders(chainID)
+
+	for _, p := range providers {
+		httpProv, ok := p.(*provider.HTTPProvider)
+		if !ok {
+			continue
+		}
+
+		stats := httpProv.Monitor.GetStats()
+		healthScore := httpProv.Monitor.GetHealthScore()
+
+		// Update Prometheus gauges
+		metrics.RPCProviderHealthScore.WithLabelValues(chainID, p.GetName()).Set(healthScore)
+		metrics.RPCProviderQuotaUsage.WithLabelValues(chainID, p.GetName()).
+			Set(stats.UsagePercentage / 100.0)
+		metrics.RPCProviderLatencySeconds.WithLabelValues(chainID, p.GetName()).
+			Set(stats.AverageLatency.Seconds())
+	}
 }

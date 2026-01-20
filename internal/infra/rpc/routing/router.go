@@ -9,6 +9,7 @@ package routing
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -104,9 +105,14 @@ func (r *DefaultRouter) GetProvider(chainID string) (provider.Provider, error) {
 		return nil, fmt.Errorf("no providers for chain %s", chainID)
 	}
 
-	// Filter out blocked providers
+	// Filter out blocked providers AND circuit broken providers
 	var available []provider.Provider
 	for _, p := range providers {
+		// Check circuit breaker first
+		if r.isCircuitOpen(p.GetName()) {
+			continue
+		}
+
 		if httpProv, ok := p.(*provider.HTTPProvider); ok {
 			status := httpProv.Monitor.CheckProviderStatus()
 			if status != provider.StatusBlocked {
@@ -171,8 +177,10 @@ func (r *DefaultRouter) RotateProvider(chainID string) (provider.Provider, error
 		return r.GetProvider(chainID)
 	}
 
-	tempRotator := NewProviderRotator(RotationRoundRobin)
-	return tempRotator.SelectProvider(chainID, providers, r, r.budget)
+	// Use random selection for forced rotation to ensure distribution
+	// and avoid "sticky first" issues with fresh round-robin rotators.
+	// We rely on the caller (Coordinator) to retry if it gets the same provider.
+	return providers[rand.Intn(len(providers))], nil
 }
 
 // GetAllProviders returns all providers for a chain.
@@ -232,6 +240,26 @@ func (r *DefaultRouter) SetRotationStrategy(strategy RotationStrategy) {
 // GetRotator returns the current rotator.
 func (r *DefaultRouter) GetRotator() *ProviderRotator {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 	return r.rotator
+}
+
+// isCircuitOpen checks if the circuit is open for a provider.
+// It includes a recovery cooldown (1 minute) to allow probing.
+func (r *DefaultRouter) isCircuitOpen(providerName string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	metrics, ok := r.providerHealth[providerName]
+	if !ok {
+		return false
+	}
+
+	if metrics.circuitOpen {
+		// Allow retry after 1 minute (Recovery probe)
+		if time.Since(metrics.lastFailureAt) > 1*time.Minute {
+			return false // Treat as closed (half-open effectively)
+		}
+		return true
+	}
+	return false
 }

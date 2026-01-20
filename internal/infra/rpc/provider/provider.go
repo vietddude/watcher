@@ -1,8 +1,9 @@
-// Package provider implements RPC provider interfaces and HTTP-based providers.
+// Package provider implements RPC provider interfaces.
 //
 // This package contains:
 //   - Provider interface: core abstraction for RPC endpoints
 //   - HTTPProvider: JSON-RPC over HTTP implementation
+//   - GRPCProvider: gRPC implementation
 //   - ProviderMonitor: health and rate tracking
 //   - ProviderPool: connection pooling with health checks
 package provider
@@ -12,23 +13,35 @@ import (
 	"time"
 )
 
-// Provider defines the core RPC provider interface.
-// This is the main abstraction for connecting to different RPC endpoints.
+// Provider defines the core interface for any RPC provider (HTTP or gRPC).
+// It serves as the base abstraction for health checking, metrics, and lifecycle management.
 type Provider interface {
-	// Call makes a single RPC request
-	Call(ctx context.Context, method string, params []any) (any, error)
-
-	// BatchCall makes multiple RPC calls in one request (if supported)
-	BatchCall(ctx context.Context, requests []BatchRequest) ([]BatchResponse, error)
-
 	// GetName returns provider identifier (e.g., "alchemy", "infura")
 	GetName() string
 
 	// GetHealth returns current health metrics
 	GetHealth() HealthStatus
 
+	// IsAvailable checks if the provider is healthy enough to use
+	IsAvailable() bool
+
+	// HasQuotaRemaining checks if the provider has not exceeded its rate limits
+	HasQuotaRemaining() bool
+
 	// Close cleans up resources
 	Close() error
+}
+
+// RPCProvider extends Provider with methods for making JSON-RPC calls.
+// This is typically implemented by HTTP-based providers (JSON-RPC).
+type RPCProvider interface {
+	Provider
+
+	// Call makes a single RPC request
+	Call(ctx context.Context, method string, params []any) (any, error)
+
+	// BatchCall makes multiple RPC calls in one request
+	BatchCall(ctx context.Context, requests []BatchRequest) ([]BatchResponse, error)
 }
 
 // BatchRequest represents a single request in a batch call.

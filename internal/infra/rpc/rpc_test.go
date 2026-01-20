@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 )
 
 func TestRPC(t *testing.T) {
-	err := godotenv.Load("../../.env")
+	err := godotenv.Load("../../../.env")
 	if err != nil {
 		t.Fatal("No .env file found")
 	}
@@ -60,21 +61,6 @@ func TestRPC(t *testing.T) {
 			continue
 		}
 		t.Logf("Call %d: Block = %s\n", i+1, result.(string))
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// 7. Show prediction stats for each provider
-	for _, name := range []string{"alchemy", "infura"} {
-		stats := coordinator.GetPredictionStats("ethereum", name)
-		t.Logf("%s:\n", name)
-		t.Logf("  Rate: %.2f req/min\n", stats.RequestRatePerMin)
-		t.Logf("  Remaining Quota: %d\n", stats.RemainingQuota)
-		if stats.TimeToExhaustion > 0 {
-			t.Logf("  Predicted Exhaustion: %v\n", stats.TimeToExhaustion.Round(time.Minute))
-		} else {
-			t.Logf("  Predicted Exhaustion: N/A (low activity)\n")
-		}
 	}
 
 	// 8. Print monitor dashboard
@@ -84,4 +70,89 @@ func TestRPC(t *testing.T) {
 	usage := client.GetUsage()
 	t.Logf("Total calls made: %d / %d (%.1f%%)\n",
 		usage.TotalCalls, usage.DailyLimit, usage.UsagePercentage)
+}
+
+// MockProvider implements Provider interface for testing
+type MockProvider struct {
+	name       string
+	shouldFail bool
+	callCount  int
+}
+
+func (m *MockProvider) Call(ctx context.Context, method string, params []any) (any, error) {
+	m.callCount++
+	if m.shouldFail {
+		return nil, fmt.Errorf("mock provider %s failed", m.name)
+	}
+	return "success_result", nil
+}
+
+func (m *MockProvider) BatchCall(
+	ctx context.Context,
+	requests []BatchRequest,
+) ([]BatchResponse, error) {
+	return nil, nil
+}
+
+func (m *MockProvider) GetName() string {
+	return m.name
+}
+
+func (m *MockProvider) GetHealth() HealthStatus {
+	return HealthStatus{Available: !m.shouldFail}
+}
+
+func (m *MockProvider) Close() error {
+	return nil
+}
+
+func (m *MockProvider) IsAvailable() bool {
+	return !m.shouldFail
+}
+
+func (m *MockProvider) HasQuotaRemaining() bool {
+	return true
+}
+
+func TestRPCFallback(t *testing.T) {
+	// 1. Setup Mock Providers
+	// Primary: Fails
+	p1 := &MockProvider{name: "primary", shouldFail: true}
+	// Secondary: Succeeds
+	p2 := &MockProvider{name: "secondary", shouldFail: false}
+
+	// 2. Setup Budget (generic)
+	budget := NewBudgetTracker(1000, map[string]float64{"test-chain": 1.0})
+
+	// 3. Setup Router
+	router := NewRouter(budget)
+	router.AddProvider("test-chain", p1)
+	router.AddProvider("test-chain", p2)
+
+	// 4. Create Client
+	client := NewClient("test-chain", router, budget)
+
+	// 5. Execute CallWithFailover
+	// Note: CallWithFailover uses CallWithRetryAndFailover, which uses DefaultRetryConfig.
+	// DefaultRetryConfig has MaxAttempts: 5.
+	// So p1 should be called 5 times, then fail.
+	// Then p2 should be called 1 time and succeed.
+	ctx := context.Background()
+	result, err := client.CallWithFailover(ctx, "test_method", nil)
+
+	if err != nil {
+		t.Fatalf("Expected success, got error: %v", err)
+	}
+
+	if result != "success_result" {
+		t.Errorf("Expected 'success_result', got %v", result)
+	}
+
+	// 6. Verify Call Counts
+	if p1.callCount != 5 {
+		t.Errorf("Expected primary to be called 5 times (due to retry), got %d", p1.callCount)
+	}
+	if p2.callCount != 1 {
+		t.Errorf("Expected secondary to be called 1 time, got %d", p2.callCount)
+	}
 }
