@@ -1,0 +1,25 @@
+groups:
+  - name: watcher
+    rules:
+      - alert: IndexerFallingBehind
+        expr: |
+          (watcher_chain_latest_block - watcher_indexer_latest_block) > 100
+        for: 5m
+        annotations:
+          summary: "Indexer is >100 blocks behind on {{ $labels.chain }}"
+          description: "Indexer is lagging behind the chain head by {{ $value }} blocks."
+      
+      - alert: ProviderHighErrorRate
+        expr: |
+          rate(watcher_rpc_errors_total[5m]) / rate(watcher_rpc_calls_total[5m]) > 0.1
+        for: 5m
+        annotations:
+          summary: "Provider {{ $labels.provider }} has >10% error rate"
+          description: "RPC Provider {{ $labels.provider }} on chain {{ $labels.chain }} is experiencing high error rate."
+      
+      - alert: QuotaNearExhaustion
+        expr: |
+          watcher_rpc_quota_remaining < (watcher_rpc_quota_total * 0.1)
+        annotations:
+          summary: "Provider {{ $labels.provider }} quota >90% consumed"
+          description: "Less than 10% quota remaining for provider {{ $labels.provider }}."

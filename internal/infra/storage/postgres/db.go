@@ -8,6 +8,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
 
@@ -57,6 +58,29 @@ func NewDB(ctx context.Context, cfg Config) (*DB, error) {
 		DB:      db,
 		Queries: sqlc.New(db),
 	}, nil
+}
+
+// StartMetricsCollector starts a background goroutine to collect DB metrics.
+func (db *DB) StartMetricsCollector(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				stats := db.Stats()
+				// Calculate usage percentage: (OpenConnections / MaxOpenConnections) * 100
+				// Note: MaxOpenConnections might be 0 (unlimited), handle that.
+				if stats.MaxOpenConnections > 0 {
+					usage := float64(stats.OpenConnections) / float64(stats.MaxOpenConnections) * 100
+					metrics.DBConnectionPoolUsage.Set(usage)
+				}
+			}
+		}
+	}()
 }
 
 // Health checks if the database is healthy.

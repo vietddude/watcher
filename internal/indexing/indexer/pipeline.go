@@ -37,6 +37,9 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	ticker := time.NewTicker(p.cfg.ScanInterval)
 	defer ticker.Stop()
 
+	// Start background head monitor
+	go p.monitorChainHead(ctx)
+
 	// Process immediately on startup, then use ticker
 	for {
 		if err := p.processNextBlock(ctx); err != nil {
@@ -186,9 +189,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
 
 	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
-	metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).
-		Set(float64(targetBlockNum))
-		// Use processed block as proxy for latest if health check fails
+	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
 
 	// 5. Filter Transactions using bloom filter
 	var relevantTxs []*domain.Transaction
@@ -197,6 +198,12 @@ func (p *Pipeline) processNextBlock(ctx context.Context) error {
 			relevantTxs = append(relevantTxs, tx)
 		}
 	}
+
+	// Metrics
+	relevantCount := float64(len(relevantTxs))
+	filteredCount := float64(len(txs) - len(relevantTxs))
+	metrics.TransactionsProcessed.WithLabelValues(p.cfg.ChainName).Add(relevantCount)
+	metrics.TransactionsFiltered.WithLabelValues(p.cfg.ChainName).Add(filteredCount)
 
 	// 6. Enrich matched transactions with receipt data (gas used, status)
 	for _, tx := range relevantTxs {
@@ -275,4 +282,25 @@ func (p *Pipeline) handleError(ctx context.Context, blockNum uint64, err error) 
 		return p.cfg.Recovery.HandleFailure(ctx, p.cfg.ChainID, blockNum, err)
 	}
 	return err
+}
+
+func (p *Pipeline) monitorChainHead(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.stop:
+			return
+		case <-ticker.C:
+			latest, err := p.cfg.ChainAdapter.GetLatestBlock(ctx)
+			if err != nil {
+				slog.Error("Failed to fetch chain head", "chain", p.cfg.ChainName, "error", err)
+				continue
+			}
+			metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(latest))
+		}
+	}
 }

@@ -417,6 +417,7 @@ func (c *Coordinator) UpdateMetrics(chainID string) {
 
 		stats := httpProv.Monitor.GetStats()
 		healthScore := httpProv.Monitor.GetHealthScore()
+		budgetStats := c.budget.GetProviderUsage(chainID, p.GetName())
 
 		// Update Prometheus gauges
 		metrics.RPCProviderHealthScore.WithLabelValues(chainID, p.GetName()).Set(healthScore)
@@ -424,5 +425,7 @@ func (c *Coordinator) UpdateMetrics(chainID string) {
 			Set(stats.UsagePercentage / 100.0)
 		metrics.RPCProviderLatencySeconds.WithLabelValues(chainID, p.GetName()).
 			Set(stats.AverageLatency.Seconds())
+		metrics.RPCQuotaRemaining.WithLabelValues(chainID, p.GetName()).
+			Set(float64(budgetStats.RemainingCalls))
 	}
 }

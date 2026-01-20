@@ -87,4 +87,88 @@ var (
 		},
 		[]string{"chain", "provider"},
 	)
+
+	// --- New Metrics ---
+
+	// BackfillBlocksQueued tracks number of blocks queued for backfill
+	BackfillBlocksQueued = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_backfill_blocks_queued",
+			Help: "Number of blocks queued for backfill",
+		},
+		[]string{"chain"},
+	)
+
+	// BackfillBlocksProcessed tracks total blocks processed by backfill
+	BackfillBlocksProcessed = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_backfill_blocks_processed_total",
+			Help: "Total number of blocks processed by backfill",
+		},
+		[]string{"chain"},
+	)
+
+	// ReorgsDetected tracks total reorgs detected
+	ReorgsDetected = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_reorgs_detected_total",
+			Help: "Total number of reorgs detected",
+		},
+		[]string{"chain"},
+	)
+
+	// ReorgDepth tracks depth of reorgs in blocks
+	ReorgDepth = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "watcher_reorg_depth_blocks",
+			Help:    "Depth of reorgs in blocks",
+			Buckets: []float64{1, 2, 5, 10, 20, 50, 100},
+		},
+		[]string{"chain"},
+	)
+
+	// DBQueryLatency tracks database query latency
+	DBQueryLatency = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "watcher_db_query_latency_seconds",
+			Help:    "Database query latency",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"operation"}, // "insert_block", "get_block", etc.
+	)
+
+	// DBConnectionPoolUsage tracks database connection pool usage percentage
+	DBConnectionPoolUsage = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "watcher_db_connection_pool_usage",
+			Help: "Database connection pool usage percentage",
+		},
+	)
+
+	// RPCQuotaRemaining tracks remaining RPC calls in daily quota
+	RPCQuotaRemaining = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_rpc_quota_remaining",
+			Help: "Remaining RPC calls in daily quota",
+		},
+		[]string{"chain", "provider"},
+	)
+
+	// TransactionsFiltered tracks transactions filtered out (not matching addresses)
+	TransactionsFiltered = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_transactions_filtered_total",
+			Help: "Transactions filtered out (not matching addresses)",
+		},
+		[]string{"chain"},
+	)
+
+	// TransactionsProcessed tracks transactions actually processed (matched filter)
+	TransactionsProcessed = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_transactions_processed_total",
+			Help: "Transactions actually processed (matched filter)",
+		},
+		[]string{"chain"},
+	)
 )

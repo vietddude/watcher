@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -129,10 +130,22 @@ func (p *Processor) ProcessOne(ctx context.Context, chainID string) error {
 
 // Run starts background processing. Blocks until context is cancelled.
 func (p *Processor) Run(ctx context.Context, chainID string) error {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	// Initial update
+	if count, err := p.missingRepo.Count(ctx, chainID); err == nil {
+		metrics.BackfillBlocksQueued.WithLabelValues(chainID).Set(float64(count))
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-ticker.C:
+			if count, err := p.missingRepo.Count(ctx, chainID); err == nil {
+				metrics.BackfillBlocksQueued.WithLabelValues(chainID).Set(float64(count))
+			}
 		default:
 			err := p.ProcessOne(ctx, chainID)
 			if errors.Is(err, ErrNoMissingBlocks) {
@@ -213,6 +226,9 @@ func (p *Processor) recordProcessed(chainID string) {
 	}
 	p.stats[chainID].ProcessedCount++
 	p.stats[chainID].LastProcessed = time.Now()
+
+	// Update metrics
+	metrics.BackfillBlocksProcessed.WithLabelValues(chainID).Inc()
 }
 
 func (p *Processor) recordFailed(chainID string) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -58,6 +59,9 @@ func (d *Detector) CheckParentHash(
 	if err != nil {
 		return nil, fmt.Errorf("failed to find safe point: %w", err)
 	}
+
+	metrics.ReorgsDetected.WithLabelValues(chainID).Inc()
+	metrics.ReorgDepth.WithLabelValues(chainID).Observe(float64(depth))
 
 	return &ReorgInfo{
 		Detected:  true,

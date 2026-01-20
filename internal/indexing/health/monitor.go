@@ -75,8 +75,13 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 		}
 
 		// 1. Get Block Lag
-
-		// 2. Missing Blocks
+		latestHeight, err := m.heightFetcher.GetLatestHeight(ctx, chainID)
+		if err == nil {
+			lag, err := m.cursorMgr.GetLag(ctx, chainID, latestHeight)
+			if err == nil && lag > 0 {
+				health.BlockLag = uint64(lag)
+			}
+		}
 		count, err := m.missingRepo.Count(ctx, chainID)
 		if err == nil {
 			health.MissingBlocks = count
