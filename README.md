@@ -1,68 +1,147 @@
-# Watcher - EVM Blockchain Indexer
+# 🦅 Watcher – Low-Cost Blockchain Indexer
 
-Watcher is a high-performance, modular, and resilient blockchain indexer designed to ingest, filter, and persist blockchain data. It serves as a "Control Plane" for your blockchain data infrastructure.
+Watcher is a **blockchain indexer built to survive on free / public RPC providers**.
 
-## 🚀 Key Features
+It does **not** index the whole chain.
+It only pulls **what you actually care about**, and it tries very hard to **not burn RPC quota**.
 
-*   **Multi-Chain Support**: Index multiple EVM chains simultaneously.
-*   **Resilient Indexing**: Handles reorgs, RPC failures, and missing blocks automatically.
-*   **PostgreSQL Persistence**: Robust data storage for blocks, transactions, and state.
-*   **Wallet Filtering**: Bloom Filter-based optimization to only index relevant transactions.
-*   **Redis Rescan**: Background worker system for re-scanning historical data ranges.
-*   **RPC Management**: Smart router with budget tracking and failover.
-*   **Observability**: Built-in Prometheus metrics and Grafana dashboards.
+If your RPC is flaky, rate-limited, or slow - Watcher assumes that’s normal.
 
-## 🏗 Architecture
+---
 
-See [Architecture Documentation](docs/architecture.md) for detailed design.
+## Why Watcher exists
 
-## 🛠 Prerequisites
+* Free RPCs **rate limit aggressively**
+* Public nodes **randomly fail**
+* Reorgs **happen**
+* Indexing everything = **expensive + pointless**
 
-*   Go 1.22+
-*   Docker & Docker Compose
-*   Make
+Watcher is designed around those constraints.
 
-## ⚡ Quick Start
+---
 
-1.  **Start Dependencies** (Postgres, Redis, Prometheus, Grafana):
-    ```bash
-    make docker-up
-    ```
+## Design principles
 
-2.  **Configuration**:
-    The default `config.yaml` is ready for local development. Adjust `chains` and `providers` as needed.
+* RPC calls are **expensive**
+* Errors are **expected**
+* 90% of transactions are **irrelevant**
+* Trust **your database**, not the RPC
 
-3.  **Run the Indexer**:
-    ```bash
-    make run
-    ```
+---
 
-## 📦 Key Commands
+## What it actually does
 
-| Command | Description |
-|---------|-------------|
-| `make build` | Build the binary to `bin/watcher` |
-| `make run` | Build and run locally |
-| `make test` | Run unit tests |
-| `make docker-up` | Start infrastructure |
-| `make migrate-up` | Run database migrations manually |
+### Chains
 
-## 🔧 Configuration (`config.yaml`)
+* EVM chains (Ethereum, BSC, Polygon, …)
+* Sui (gRPC)
+* Tron (REST)
+* Bitcoin (JSON-RPC)
+
+### RPC usage (cost-first)
+
+* Multiple providers per chain
+* Daily quota tracking
+* Throttling before rate-limit hits
+* No aggressive retries
+
+### Reorg handling (cheap)
+
+* Detects reorgs via **parent hash comparison**
+* Uses **stored blocks**, no extra RPC calls
+* Rolls back locally
+* RPC verification only when necessary
+
+### Backfill & recovery
+
+* Detects missing blocks from DB gaps
+* Backfill runs slowly in background
+* Failed blocks are retried with backoff
+
+### Address filtering
+
+* In-memory filter by default
+* Bloom filter optimization for EVM
+* Only enrich transactions that match
+
+### Storage
+
+* PostgreSQL (production)
+* In-memory (dev / tests)
+* Optional pruning via retention policy
+
+### Observability
+
+* Prometheus metrics
+* Grafana dashboards
+* `/health` and `/metrics` endpoints
+
+---
+
+## What Watcher is NOT
+
+❌ A full-chain analytics engine
+❌ A replacement for The Graph
+❌ A high-frequency trading indexer
+
+Watcher is meant to be **backend infrastructure**, not a data warehouse.
+
+---
+
+## Quick start
+
+### 1. Start dependencies
+
+```bash
+make docker-up
+```
+
+### 2. Minimal config (free-tier friendly)
 
 ```yaml
 chains:
   - chain_id: "1"
     internal_code: "ETH_MAINNET"
+    scan_interval: 5s
+    finality_blocks: 12
     providers:
-      - name: "public-node"
+      - name: "public"
         url: "https://ethereum-rpc.publicnode.com"
 
 database:
   url: "postgres://watcher:watcher123@localhost:5432/watcher?sslmode=disable"
 
 backfill:
-  blocks_per_minute: 60
+  blocks_per_minute: 30
 
 budget:
-  daily_quota: 100000
+  daily_quota: 10000
 ```
+
+### 3. Run
+
+```bash
+make run
+```
+
+---
+
+## Useful commands
+
+| Command           | Description       |
+| ----------------- | ----------------- |
+| `make run`        | Run locally       |
+| `make test`       | Run tests         |
+| `make docker-up`  | Start infra       |
+| `make migrate-up` | Run DB migrations |
+
+---
+
+## Mental model
+
+Watcher is closer to a **smart cron job** than a streaming system.
+
+* Slow is fine (not that slow though)
+* Cheap is the goal
+* Restart anytime
+* Never trust the RPC blindly

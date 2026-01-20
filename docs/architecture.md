@@ -49,9 +49,11 @@ The heart of the system. Runs in a loop:
 4.  **Commit**: Update Cursor (`CursorRepo`) and persist data (`BlockRepo`, `TxRepo`).
 
 ### RPC Management (`internal/infra/rpc`)
-- **Coordinator**: Manages multiple RPC providers per chain.
-- **Router**: Routes requests based on health and budget.
-- **BudgetTracker**: Enforces global and per-chain rate limits.
+- **Coordinator**: Orchestrates operations across providers.
+- **Providers (`internal/infra/rpc/provider`)**: Pluggable implementations for HTTP and gRPC.
+- **Router (`internal/infra/rpc/routing`)**: Smart routing logic based on health, latency, and budget.
+- **Budget (`internal/infra/rpc/budget`)**: Tracks method limitations and daily quotas.
+- **Operations**: Abstracted RPC calls enabling unified handling of JSON-RPC and gRPC.
 
 ### Data Models (`internal/core/domain`)
 - **Block**: Normalized block header.
@@ -71,7 +73,7 @@ Primary persistence for all indexed data.
     - `wallet_addresses`: Monitored targets.
     - `missing_blocks`: Backfill queue.
     - `failed_blocks`: Retry queue.
-- **Repositories**: `internal/infra/storage/postgres` (using `sqlx`).
+- **Repositories**: `internal/infra/storage/postgres` using **sqlc** for type-safe query generation. Generated code resides in `internal/infra/storage/postgres/sqlc`.
 
 ### Redis
 Used for coordination of heavy background tasks.
@@ -104,6 +106,9 @@ To optimize storage and processing, the Watcher uses a filtering mechanism:
     - `control/`: App assembly.
     - `core/`: Domain types, config, ports.
     - `indexing/`: Logic (Pipeline, Recover, Reorg).
-    - `infra/`: Adapters (RPC, Postgres, Redis, Memory).
+    - `infra/`: Adapters.
+        - `rpc/`: RPC Manager (Provider, Routing, Budget).
+        - `storage/`: Persistence (Postgres/sqlc, Redis).
+        - `chain/`: Chain-specific adapters (EVM, Sui, Tron, Bitcoin).
 - `migrations/`: SQL schemas (Goose).
 - `docs/`: Architecture and design docs.
