@@ -24,7 +24,19 @@ type Operation struct {
 
 	// Params for HTTP JSON-RPC calls.
 	// NOTE: For HTTP providers, if Invoke is NOT set, these Params are used with Name.
-	Params []any
+	// For JSON-RPC, this should be []any. For REST, it can be any valid JSON-serializable type.
+	Params any
+
+	// IsREST indicates if this is a REST API call instead of JSON-RPC.
+	IsREST bool
+
+	// RESTMethod specifies the HTTP method for REST calls (e.g., "GET", "POST").
+	// Only used if IsREST is true.
+	RESTMethod string
+
+	// JSONRPCVersion specifies the JSON-RPC version (e.g., "1.0", "2.0").
+	// If empty, defaults to "2.0".
+	JSONRPCVersion string
 
 	// Invoke is the actual operation to execute.
 	// NOTE: For gRPC providers, this is REQUIRED and wraps the generated client call.
