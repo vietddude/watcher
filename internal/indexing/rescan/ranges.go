@@ -31,10 +31,7 @@ func (r Range) Split(maxSize uint64) []Range {
 	current := r.Start
 
 	for current <= r.End {
-		chunkEnd := current + maxSize - 1
-		if chunkEnd > r.End {
-			chunkEnd = r.End
-		}
+		chunkEnd := min(current+maxSize-1, r.End)
 		chunks = append(chunks, Range{Start: current, End: chunkEnd})
 		current = chunkEnd + 1
 	}

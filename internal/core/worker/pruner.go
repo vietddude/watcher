@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/config"
@@ -36,13 +36,8 @@ func (p *Pruner) Start(ctx context.Context) {
 	}
 
 	// Calculate check interval (e.g., 10% of retention period, but max 1 hour)
-	interval := p.cfg.RetentionPeriod / 10
-	if interval > 1*time.Hour {
-		interval = 1 * time.Hour
-	}
-	if interval < 1*time.Minute {
-		interval = 1 * time.Minute
-	}
+	interval := min(p.cfg.RetentionPeriod/10, 1*time.Hour)
+	interval = max(interval, 1*time.Minute)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -65,10 +60,10 @@ func (p *Pruner) prune(ctx context.Context) {
 
 	if err := p.blockRepo.DeleteBlocksOlderThan(ctx, p.cfg.ChainID, threshold); err != nil {
 		// Log error (we don't have logger here, maybe fmt?)
-		fmt.Printf("[Pruner] failed to prune blocks for %s: %v\n", p.cfg.ChainID, err)
+		slog.Error("[Pruner] failed to prune blocks for %s: %v\n", p.cfg.ChainID, err)
 	}
 
 	if err := p.txRepo.DeleteTransactionsOlderThan(ctx, p.cfg.ChainID, threshold); err != nil {
-		fmt.Printf("[Pruner] failed to prune transactions for %s: %v\n", p.cfg.ChainID, err)
+		slog.Error("[Pruner] failed to prune transactions for %s: %v\n", p.cfg.ChainID, err)
 	}
 }

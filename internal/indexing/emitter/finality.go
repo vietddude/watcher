@@ -91,12 +91,6 @@ func (f *FinalityBuffer) PendingCount(blockNum uint64) int {
 }
 
 // Emit delegates to inner emitter (used for direct emission if needed, though Pipeline uses QueueEvent/OnNewBlock for finality)
-// IMPORTANT: Pipeline calls Emitter.Emit(). If FinalityBuffer is passed as Emitter to Pipeline,
-// this Emit method MUST implement the buffering logic, because Pipeline sees it as standard Emitter.
-// The Pipeline calls Emit(event).
-// The `QueueEvent` method I added previously is specific to FinalityBuffer, but Pipeline uses generic Emitter interface.
-// Adapter: func (f *FinalityBuffer) Emit(ctx, event) error { return f.QueueEvent(ctx, event) }
-
 func (f *FinalityBuffer) Emit(ctx context.Context, event *domain.Event) error {
 	return f.QueueEvent(ctx, event)
 }

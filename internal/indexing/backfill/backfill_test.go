@@ -10,10 +10,6 @@ import (
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
-// =============================================================================
-// Mock Repositories
-// =============================================================================
-
 type mockBlockRepo struct {
 	gaps []Gap
 }
@@ -145,10 +141,6 @@ func (r *mockMissingRepo) Count(ctx context.Context, chainID string) (int, error
 	return len(r.blocks), nil
 }
 
-// =============================================================================
-// Detector Tests
-// =============================================================================
-
 func TestDetector_OnCursorGap(t *testing.T) {
 	blockRepo := &mockBlockRepo{}
 	missingRepo := &mockMissingRepo{}
@@ -215,10 +207,6 @@ func TestDetector_ScanDatabase(t *testing.T) {
 		t.Errorf("expected 2 gaps, got %d", len(gaps))
 	}
 }
-
-// =============================================================================
-// Processor Tests
-// =============================================================================
 
 func TestProcessor_ProcessOne_NoBlocks(t *testing.T) {
 	missingRepo := &mockMissingRepo{}

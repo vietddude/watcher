@@ -10,10 +10,6 @@ import (
 	"github.com/vietddude/watcher/internal/core/domain"
 )
 
-// =============================================================================
-// Mock Repository
-// =============================================================================
-
 type mockFailedRepo struct {
 	mu     sync.Mutex
 	blocks []*domain.FailedBlock
@@ -70,10 +66,6 @@ func (r *mockFailedRepo) Count(ctx context.Context, chainID string) (int, error)
 	return len(r.blocks), nil
 }
 
-// =============================================================================
-// Strategy Tests
-// =============================================================================
-
 func TestBackoff_Delay(t *testing.T) {
 	strategy := DefaultBackoff(nil)
 	strategy.InitialDelay = 1 * time.Second
@@ -114,10 +106,6 @@ func TestBackoff_ShouldRetry(t *testing.T) {
 		t.Error("should NOT retry attempt 3 (max reached)")
 	}
 }
-
-// =============================================================================
-// Handler Tests
-// =============================================================================
 
 func TestHandler_HandleFailure(t *testing.T) {
 	repo := &mockFailedRepo{}

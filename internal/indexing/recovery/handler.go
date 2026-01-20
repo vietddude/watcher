@@ -33,50 +33,27 @@ func NewHandler(
 	}
 }
 
-// ProcessNext picks the next failed block and attempts to retry it.
+// ProcessNext picks the next failed block and retries it if backoff allows.
 func (h *Handler) ProcessNext(ctx context.Context, chainID string) error {
 	failedBlock, err := h.repo.GetNext(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get next failed block: %w", err)
 	}
 	if failedBlock == nil {
-		return nil // Queue empty
+		return nil
 	}
 
-	// Calculate if it's time to retry
 	delay := h.strategy.GetDelay(failedBlock.RetryCount)
 	lastAttempt := time.Unix(int64(failedBlock.LastAttempt), 0)
-	nextAttempt := lastAttempt.Add(delay)
-
-	if time.Now().Before(nextAttempt) {
-		return nil // Too early to retry
+	if time.Now().Before(lastAttempt.Add(delay)) {
+		return nil
 	}
 
-	// Attempt retry
-	err = h.fetcher(ctx, chainID, failedBlock.BlockNumber)
-	if err == nil {
-		// Success! Resolve the failure
+	if err := h.fetcher(ctx, chainID, failedBlock.BlockNumber); err == nil {
 		if err := h.repo.MarkResolved(ctx, failedBlock.ID); err != nil {
 			return fmt.Errorf("failed to resolve block %s: %w", failedBlock.ID, err)
 		}
 		return nil
-	}
-
-	// Failed again
-	// We could check if the error is permanent here using:
-	// if s, ok := h.strategy.(*ExponentialBackoff); ok && s.Classifier != nil {
-	//     category = s.Classifier(err)
-	// }
-	// But currently FailedBlockRepository doesn't support updating failure type on retry.
-
-	// If permanent or max retries exceeded -> Human review needed
-	// BUT for now, we just increment retry count.
-	// In a real system, we might move to a "dead letter" status if permanent.
-
-	if !h.strategy.ShouldRetry(err, failedBlock.RetryCount) {
-		// Max attempts reached or permanent error
-		// We could mark as "permanently failed" here if the domain supported it,
-		// but typically we just leave it with high retry count for admin review.
 	}
 
 	if err := h.repo.IncrementRetry(ctx, failedBlock.ID); err != nil {

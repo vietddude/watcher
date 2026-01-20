@@ -381,10 +381,6 @@ func (w *Watcher) Stop(ctx context.Context) error {
 	return w.healthServer.Stop(ctx)
 }
 
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
 // MultiChainFetcher adapts chain adapters to BlockHeightFetcher interface
 type MultiChainFetcher struct {
 	adapters map[string]chain.Adapter

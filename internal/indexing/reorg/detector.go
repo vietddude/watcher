@@ -54,7 +54,7 @@ func (d *Detector) CheckParentHash(
 
 	// Mismatch! Reorg detected
 	// Find safe point by walking backwards
-	safeBlock, safeHash, depth, err := d.findSafePoint(ctx, chainID, prevBlockNum, parentHash)
+	safeBlock, safeHash, depth, err := d.findSafePoint(ctx, chainID, prevBlockNum)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find safe point: %w", err)
 	}
@@ -74,7 +74,6 @@ func (d *Detector) findSafePoint(
 	ctx context.Context,
 	chainID string,
 	fromBlock uint64,
-	expectedHash string,
 ) (safeBlock uint64, safeHash string, depth int, err error) {
 	// Start from the mismatched block and go backwards
 	currentBlock := fromBlock

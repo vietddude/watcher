@@ -9,10 +9,6 @@ import (
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
-// =============================================================================
-// Mock Block Repository
-// =============================================================================
-
 type mockBlockRepo struct {
 	mu     sync.RWMutex
 	blocks map[uint64]*domain.Block
@@ -96,10 +92,6 @@ func (r *mockBlockRepo) DeleteBlocksOlderThan(
 ) error {
 	return nil
 }
-
-// =============================================================================
-// Detector Tests
-// =============================================================================
 
 func TestDetector_ParentHashMatch(t *testing.T) {
 	repo := newMockBlockRepo()
