@@ -79,8 +79,8 @@ func (p *GRPCProvider) Conn() *grpc.ClientConn {
 //	}
 //	result, err := provider.Execute(ctx, op)
 func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
-	if op.Invoke == nil {
-		return nil, fmt.Errorf("gRPC operation requires Invoke function")
+	if op.Invoke == nil && op.GRPCHandler == nil {
+		return nil, fmt.Errorf("gRPC operation requires Invoke or GRPCHandler function")
 	}
 
 	const maxRetries = 3
@@ -94,7 +94,14 @@ func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
 			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
 		}
 
-		result, err := op.Invoke(ctx)
+		var result any
+		var err error
+		if op.GRPCHandler != nil {
+			result, err = op.GRPCHandler(ctx, p.conn)
+		} else {
+			result, err = op.Invoke(ctx)
+		}
+
 		if err == nil {
 			p.RecordSuccess(time.Since(start))
 			return result, nil

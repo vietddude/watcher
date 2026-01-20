@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strings"
-
-	logger "log/slog"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/filter"
@@ -16,26 +15,29 @@ import (
 
 type EVMAdapter struct {
 	chainID        string
-	rpcProvider    rpc.Provider
-	bloomFilter    *filter.BloomFilter
+	client         rpc.RPCClient
 	finalityBlocks uint64
-	log            logger.Logger
+
+	// filtering
+	bloomFilter     *filter.BloomFilter
+	addressSet      map[string]struct{}
+	lastAddressHash uint64
 }
 
-func NewEVMAdapter(chainID string, provider rpc.Provider, finalityBlocks uint64) *EVMAdapter {
+func NewEVMAdapter(chainID string, client rpc.RPCClient, finalityBlocks uint64) *EVMAdapter {
 	return &EVMAdapter{
 		chainID:        chainID,
-		rpcProvider:    provider,
-		bloomFilter:    filter.NewBloomFilter(),
+		client:         client,
 		finalityBlocks: finalityBlocks,
-		log:            *logger.Default(),
+		bloomFilter:    filter.NewBloomFilter(),
 	}
 }
 
 func (a *EVMAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
-	result, err := a.rpcProvider.Call(ctx, "eth_blockNumber", []any{})
+	op := rpc.NewHTTPOperation("eth_blockNumber", nil)
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get latest block: %w", err)
+		return 0, fmt.Errorf("eth_blockNumber failed: %w", err)
 	}
 
 	blockHex, ok := result.(string)
@@ -43,45 +45,43 @@ func (a *EVMAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("invalid block number response")
 	}
 
-	blockNum := new(big.Int)
-	blockNum.SetString(strings.TrimPrefix(blockHex, "0x"), 16)
-
-	return blockNum.Uint64(), nil
+	return parseHexString(blockHex)
 }
 
 func (a *EVMAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
 	blockHex := fmt.Sprintf("0x%x", blockNumber)
+	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, false})
 
-	result, err := a.rpcProvider.Call(ctx, "eth_getBlockByNumber", []any{blockHex, false})
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block %d: %w", blockNumber, err)
+		return nil, err
 	}
-
 	if result == nil {
 		return nil, fmt.Errorf("block %d not found", blockNumber)
 	}
 
 	blockData, ok := result.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid block data format")
+		return nil, fmt.Errorf("invalid block format")
 	}
 
 	return a.parseBlock(blockData)
 }
 
 func (a *EVMAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
-	result, err := a.rpcProvider.Call(ctx, "eth_getBlockByHash", []any{blockHash, false})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get block by hash %s: %w", blockHash, err)
-	}
+	op := rpc.NewHTTPOperation("eth_getBlockByHash", []any{blockHash, false})
 
+	result, err := a.client.Execute(ctx, op)
+	if err != nil {
+		return nil, err
+	}
 	if result == nil {
-		return nil, fmt.Errorf("block with hash %s not found", blockHash)
+		return nil, fmt.Errorf("block %s not found", blockHash)
 	}
 
 	blockData, ok := result.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid block data format")
+		return nil, fmt.Errorf("invalid block format")
 	}
 
 	return a.parseBlock(blockData)
@@ -92,43 +92,45 @@ func (a *EVMAdapter) GetTransactions(
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
 	if block.TxCount == 0 {
-		return []*domain.Transaction{}, nil
+		return nil, nil
 	}
 
 	blockHex := fmt.Sprintf("0x%x", block.Number)
-	result, err := a.rpcProvider.Call(ctx, "eth_getBlockByNumber", []any{blockHex, true})
+	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
+
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block transactions: %w", err)
+		return nil, err
 	}
 
 	blockData, ok := result.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid block data format")
+		return nil, fmt.Errorf("invalid block format")
 	}
 
-	txsRaw, ok := blockData["transactions"].([]any)
+	rawTxs, ok := blockData["transactions"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid transactions format")
 	}
 
-	transactions := make([]*domain.Transaction, 0, len(txsRaw))
-	for i, txRaw := range txsRaw {
-		txData, ok := txRaw.(map[string]any)
+	txs := make([]*domain.Transaction, 0, len(rawTxs))
+	for i, raw := range rawTxs {
+		txData, ok := raw.(map[string]any)
 		if !ok {
-			a.log.Warn("skipping invalid transaction", "index", i)
+			slog.Warn("skip invalid tx", "index", i)
 			continue
 		}
 
 		tx, err := a.parseTransaction(txData, block)
 		if err != nil {
-			a.log.Warn("failed to parse transaction", "error", err, "index", i)
+			slog.Warn("parse tx failed", "error", err, "index", i)
 			continue
 		}
 
-		transactions = append(transactions, tx)
+		txs = append(txs, tx)
 	}
 
-	return transactions, nil
+	return txs, nil
 }
 
 func (a *EVMAdapter) FilterTransactions(
@@ -136,26 +138,67 @@ func (a *EVMAdapter) FilterTransactions(
 	txs []*domain.Transaction,
 	addresses []string,
 ) ([]*domain.Transaction, error) {
-	// Use bloom filter for fast filtering
-	if !a.bloomFilter.IsInitialized() {
-		a.bloomFilter.Build(addresses)
-	}
+
+	a.ensureAddressIndex(addresses)
 
 	filtered := make([]*domain.Transaction, 0)
 
 	for _, tx := range txs {
-		// First check bloom filter (fast path)
+		// fast path
 		if !a.bloomFilter.MayContain(tx.From) && !a.bloomFilter.MayContain(tx.To) {
 			continue
 		}
 
-		// Then check actual address set (slow path)
-		if a.containsAddress(addresses, tx.From) || a.containsAddress(addresses, tx.To) {
+		// exact match (O(1))
+		if _, ok := a.addressSet[tx.From]; ok {
+			filtered = append(filtered, tx)
+			continue
+		}
+		if _, ok := a.addressSet[tx.To]; ok {
 			filtered = append(filtered, tx)
 		}
 	}
 
 	return filtered, nil
+}
+
+func (a *EVMAdapter) ensureAddressIndex(addresses []string) {
+	h := hashAddresses(addresses)
+	if h == a.lastAddressHash {
+		return
+	}
+
+	a.bloomFilter.Clear()
+	a.bloomFilter.Build(addresses)
+
+	a.addressSet = make(map[string]struct{}, len(addresses))
+	for _, addr := range addresses {
+		a.addressSet[strings.ToLower(addr)] = struct{}{}
+	}
+
+	a.lastAddressHash = h
+}
+
+func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
+	op := rpc.NewHTTPOperation("eth_getTransactionReceipt", []any{tx.TxHash})
+	result, err := a.client.Execute(ctx, op)
+	if err != nil || result == nil {
+		return err
+	}
+
+	receipt, ok := result.(map[string]any)
+	if !ok {
+		return fmt.Errorf("invalid receipt format")
+	}
+
+	if gu, ok := receipt["gasUsed"].(string); ok {
+		tx.GasUsed, _ = parseHexString(gu)
+	}
+	if st, ok := receipt["status"].(string); ok && st == "0x0" {
+		tx.Status = domain.TxStatusFailed
+	}
+
+	return nil
 }
 
 func (a *EVMAdapter) VerifyBlockHash(
@@ -167,190 +210,99 @@ func (a *EVMAdapter) VerifyBlockHash(
 	if err != nil {
 		return false, err
 	}
-
 	return strings.EqualFold(block.Hash, expectedHash), nil
 }
 
-func (a *EVMAdapter) GetFinalityDepth() uint64 {
-	return a.finalityBlocks
-}
+func (a *EVMAdapter) GetFinalityDepth() uint64  { return a.finalityBlocks }
+func (a *EVMAdapter) GetChainID() string        { return a.chainID }
+func (a *EVMAdapter) SupportsBloomFilter() bool { return true }
 
-func (a *EVMAdapter) GetChainID() string {
-	return a.chainID
-}
-
-func (a *EVMAdapter) SupportsBloomFilter() bool {
-	return true
-}
-
-// EnrichTransaction fetches receipt for a transaction to get actual gas used and status.
-// Only call this for transactions that match your filter.
-func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
-	receipt, err := a.getTransactionReceipt(ctx, tx.TxHash)
-	if err != nil {
-		return fmt.Errorf("failed to get receipt: %w", err)
-	}
-	if receipt == nil {
-		return nil
-	}
-
-	if gu, ok := receipt["gasUsed"].(string); ok {
-		tx.GasUsed, _ = parseHexString(gu)
-	}
-	if st, ok := receipt["status"].(string); ok && st == "0x0" {
-		tx.Status = domain.TxStatusFailed
-	}
-	return nil
-}
-
-// Helper methods
-
-func (a *EVMAdapter) parseBlock(blockData map[string]any) (*domain.Block, error) {
-	numberStr, ok := blockData["number"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid block number format")
-	}
-	number, err := parseHexString(numberStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid block number: %w", err)
-	}
-
-	hash, ok := blockData["hash"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid block hash")
-	}
-
-	parentHash, ok := blockData["parentHash"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid parent hash")
-	}
-
-	timestampStr, ok := blockData["timestamp"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid timestamp format")
-	}
-	timestamp, err := parseHexString(timestampStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid timestamp: %w", err)
-	}
-
-	txCount := 0
-	if txs, ok := blockData["transactions"].([]any); ok {
-		txCount = len(txs)
-	}
-
-	return &domain.Block{
-		ChainID:    a.chainID,
-		Number:     number,
-		Hash:       hash,
-		ParentHash: parentHash,
-		Timestamp:  timestamp,
-		TxCount:    txCount,
-		Status:     domain.BlockStatusPending,
-		Metadata: map[string]any{
-			"gasUsed":  blockData["gasUsed"],
-			"gasLimit": blockData["gasLimit"],
-			"miner":    blockData["miner"],
-		},
-	}, nil
-}
-
-func (a *EVMAdapter) parseTransaction(
-	txData map[string]any,
-	block *domain.Block,
-) (*domain.Transaction, error) {
-	txHash, ok := txData["hash"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid tx hash")
-	}
-
-	from, ok := txData["from"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid from address")
-	}
-
-	to := ""
-	if toAddr, ok := txData["to"].(string); ok {
-		to = toAddr
-	}
-
-	value := "0"
-	if val, ok := txData["value"].(string); ok {
-		value = val
-	}
-
-	txIndex := 0
-	if idx, ok := txData["transactionIndex"].(string); ok {
-		idxInt, _ := parseHexString(idx)
-		txIndex = int(idxInt)
-	}
-
-	gasPrice := "0"
-	if gp, ok := txData["gasPrice"].(string); ok {
-		gasPrice = gp
-	}
-
-	// Gas estimate from transaction (not actual usage - that requires receipt)
-	gas := uint64(0)
-	if g, ok := txData["gas"].(string); ok {
-		gas, _ = parseHexString(g)
-	}
-
-	rawData, _ := json.Marshal(txData)
-
-	return &domain.Transaction{
-		ChainID:     a.chainID,
-		BlockNumber: block.Number,
-		BlockHash:   block.Hash,
-		TxHash:      txHash,
-		TxIndex:     txIndex,
-		From:        strings.ToLower(from),
-		To:          strings.ToLower(to),
-		Value:       value,
-		GasUsed:     gas, // Using gas limit as estimate; fetch receipt later if needed
-		GasPrice:    gasPrice,
-		Status:      domain.TxStatusSuccess, // Assume success; fetch receipt for failed check
-		Timestamp:   block.Timestamp,
-		RawData:     rawData,
-	}, nil
-}
-
-func (a *EVMAdapter) getTransactionReceipt(
-	ctx context.Context,
-	txHash string,
-) (map[string]any, error) {
-	result, err := a.rpcProvider.Call(ctx, "eth_getTransactionReceipt", []any{txHash})
+func (a *EVMAdapter) parseBlock(data map[string]any) (*domain.Block, error) {
+	number, err := parseHexString(data["number"].(string))
 	if err != nil {
 		return nil, err
 	}
 
-	if result == nil {
-		return nil, fmt.Errorf("receipt not found")
+	block := &domain.Block{
+		ChainID:    a.chainID,
+		Number:     number,
+		Hash:       data["hash"].(string),
+		ParentHash: data["parentHash"].(string),
+		Status:     domain.BlockStatusPending,
+		Metadata:   map[string]any{},
 	}
 
-	receipt, ok := result.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid receipt format")
+	if ts, ok := data["timestamp"].(string); ok {
+		block.Timestamp, _ = parseHexString(ts)
+	}
+	if txs, ok := data["transactions"].([]any); ok {
+		block.TxCount = len(txs)
 	}
 
-	return receipt, nil
+	block.Metadata["gasUsed"] = data["gasUsed"]
+	block.Metadata["gasLimit"] = data["gasLimit"]
+	block.Metadata["miner"] = data["miner"]
+
+	return block, nil
 }
 
-func (a *EVMAdapter) containsAddress(addresses []string, target string) bool {
-	target = strings.ToLower(target)
-	for _, addr := range addresses {
-		if strings.EqualFold(addr, target) {
-			return true
-		}
+func (a *EVMAdapter) parseTransaction(
+	data map[string]any,
+	block *domain.Block,
+) (*domain.Transaction, error) {
+
+	raw, _ := json.Marshal(data)
+
+	tx := &domain.Transaction{
+		ChainID:     a.chainID,
+		BlockNumber: block.Number,
+		BlockHash:   block.Hash,
+		TxHash:      data["hash"].(string),
+		From:        strings.ToLower(data["from"].(string)),
+		To:          strings.ToLower(getString(data["to"])),
+		Value:       getString(data["value"]),
+		GasPrice:    getString(data["gasPrice"]),
+		Status:      domain.TxStatusSuccess,
+		Timestamp:   block.Timestamp,
+		RawData:     raw,
 	}
-	return false
+
+	if idx, ok := data["transactionIndex"].(string); ok {
+		tx.TxIndex, _ = intFromHex(idx)
+	}
+	if gas, ok := data["gas"].(string); ok {
+		tx.GasUsed, _ = parseHexString(gas)
+	}
+
+	return tx, nil
 }
 
 func parseHexString(hexStr string) (uint64, error) {
-	num := new(big.Int)
-	_, ok := num.SetString(strings.TrimPrefix(hexStr, "0x"), 16)
-	if !ok {
+	n := new(big.Int)
+	if _, ok := n.SetString(strings.TrimPrefix(hexStr, "0x"), 16); !ok {
 		return 0, fmt.Errorf("invalid hex: %s", hexStr)
 	}
-	return num.Uint64(), nil
+	return n.Uint64(), nil
+}
+
+func intFromHex(hexStr string) (int, error) {
+	n, err := parseHexString(hexStr)
+	return int(n), err
+}
+
+func getString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func hashAddresses(addrs []string) uint64 {
+	var h uint64
+	for _, a := range addrs {
+		for i := 0; i < len(a); i++ {
+			h = h*131 + uint64(a[i])
+		}
+	}
+	return h
 }

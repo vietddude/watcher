@@ -81,65 +81,66 @@ result, err := client.Call(ctx, "eth_blockNumber", nil)
 
 ---
 
-## Operation Model (Important)
+## Operation Model
 
-The `Operation` abstraction is the **core execution unit** of this package.
+The `Operation` abstraction allows the coordinator to execute requests across different protocols seamlessly.
 
-### Rules
+### Supported Protocols
 
-* **HTTP JSON-RPC providers**
+1. **JSON-RPC 2.0 (Standard)**
+   - Default for Ethereum, Polygon, etc.
+   - Use `NewHTTPOperation`.
 
-  * Use `Operation.Name` and `Operation.Params`
-  * `Operation.Invoke` is ignored
+2. **JSON-RPC 1.0**
+   - Required for Bitcoin (strict 1.0 compliance).
+   - Use `NewJSONRPC10Operation` (omits version field, handles null params).
 
-* **gRPC providers**
+3. **REST**
+   - Required for Tron.
+   - Use `NewRESTOperation` (supports methods, headers, and arbitrary bodies).
 
-  * `Operation.Invoke` **MUST** be provided
-  * The generated gRPC client call is wrapped inside `Invoke`
-
-This design exists because **gRPC uses generated, strongly-typed clients**
-and cannot be called via `Call(method, params)`.
-
----
-
-## Operation-based Usage (gRPC & HTTP)
-
-The package exposes a unified:
-
-```go
-Execute(ctx context.Context, op Operation)
-```
-
-This method supports **both HTTP JSON-RPC and gRPC** with the same
-retry, failover, budget, and monitoring pipeline.
+4. **gRPC**
+   - Required for Sui, Solana, etc.
+   - Use `NewGRPCOperation`.
+   - **Crucial**: The `GRPCHandler` receives the active connection from the provider, enabling load balancing for generated clients.
 
 ---
 
-### gRPC (Generated Clients)
+## Usage Examples
+
+### 1. HTTP JSON-RPC 2.0 (Ethereum)
 
 ```go
-// 1. Create gRPC provider
-grpcProv, _ := rpc.NewGRPCProvider(ctx, "alchemy-grpc", "alchemy.com:443")
-
-// 2. Wrap generated client call into an Operation
-op := rpc.NewOperation("GetBlock", func(ctx context.Context) (any, error) {
-    client := pb.NewBlockchainClient(grpcProv.Conn())
-    return client.GetBlock(ctx, &pb.BlockRequest{Number: 123})
-})
-
-// 3. Execute with failover, retry, and monitoring
+op := rpc.NewHTTPOperation("eth_blockNumber", nil)
 result, err := client.Execute(ctx, op)
 ```
 
----
-
-### HTTP (JSON-RPC) via Operation
+### 2. HTTP JSON-RPC 1.0 (Bitcoin)
 
 ```go
-// 1. Create HTTP operation
-op := rpc.NewHTTPOperation("eth_blockNumber", nil)
+// Helper handles version 1.0 quarks (no jsonrpc field, null params)
+op := rpc.NewJSONRPC10Operation("getblockcount")
+result, err := client.Execute(ctx, op)
+```
 
-// 2. Execute
+### 3. HTTP REST (Tron)
+
+```go
+// Execute: POST /wallet/getnowblock
+op := rpc.NewRESTOperation("wallet/getnowblock", "POST", nil)
+result, err := client.Execute(ctx, op)
+```
+
+### 4. gRPC (Sui)
+
+```go
+// The handler receives the active 'conn' from the load-balanced provider
+op := rpc.NewGRPCOperation("GetCheckpoint", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+    // Create generated client using the injected connection
+    cli := suipb.NewLedgerServiceClient(conn)
+    return cli.GetCheckpoint(ctx, &req)
+})
+
 result, err := client.Execute(ctx, op)
 ```
 

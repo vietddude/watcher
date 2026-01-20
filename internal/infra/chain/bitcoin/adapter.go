@@ -13,26 +13,27 @@ import (
 
 type BitcoinAdapter struct {
 	chainID        string
-	rpcProvider    rpc.Provider
+	client         rpc.RPCClient
 	finalityBlocks uint64
 	log            logger.Logger
 }
 
 func NewBitcoinAdapter(
 	chainID string,
-	provider rpc.Provider,
+	client rpc.RPCClient,
 	finalityBlocks uint64,
 ) *BitcoinAdapter {
 	return &BitcoinAdapter{
 		chainID:        chainID,
-		rpcProvider:    provider,
+		client:         client,
 		finalityBlocks: finalityBlocks,
 		log:            *logger.Default(),
 	}
 }
 
 func (a *BitcoinAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
-	result, err := a.rpcProvider.Call(ctx, "getblockcount", []any{})
+	op := rpc.NewJSONRPC10Operation("getblockcount")
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block count: %w", err)
 	}
@@ -47,7 +48,8 @@ func (a *BitcoinAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 
 func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
 	// First get block hash
-	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []any{blockNumber})
+	opHash := rpc.NewJSONRPC10Operation("getblockhash", blockNumber)
+	hashResult, err := a.client.Execute(ctx, opHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block hash: %w", err)
 	}
@@ -58,7 +60,8 @@ func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*dom
 	}
 
 	// Then get block details with verbosity 1 (includes tx hashes)
-	result, err := a.rpcProvider.Call(ctx, "getblock", []any{blockHash, 1})
+	opBlock := rpc.NewJSONRPC10Operation("getblock", blockHash, 1)
+	result, err := a.client.Execute(ctx, opBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block: %w", err)
 	}
@@ -75,7 +78,8 @@ func (a *BitcoinAdapter) GetBlockByHash(
 	ctx context.Context,
 	blockHash string,
 ) (*domain.Block, error) {
-	result, err := a.rpcProvider.Call(ctx, "getblock", []any{blockHash, 1})
+	op := rpc.NewJSONRPC10Operation("getblock", blockHash, 1)
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash: %w", err)
 	}
@@ -97,7 +101,8 @@ func (a *BitcoinAdapter) GetTransactions(
 	}
 
 	// Get block with full transaction details (verbosity 2)
-	result, err := a.rpcProvider.Call(ctx, "getblock", []any{block.Hash, 2})
+	op := rpc.NewJSONRPC10Operation("getblock", block.Hash, 2)
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block transactions: %w", err)
 	}
@@ -159,7 +164,8 @@ func (a *BitcoinAdapter) VerifyBlockHash(
 	blockNumber uint64,
 	expectedHash string,
 ) (bool, error) {
-	hashResult, err := a.rpcProvider.Call(ctx, "getblockhash", []any{blockNumber})
+	op := rpc.NewJSONRPC10Operation("getblockhash", blockNumber)
+	hashResult, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return false, err
 	}

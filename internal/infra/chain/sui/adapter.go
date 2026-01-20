@@ -7,11 +7,14 @@ import (
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	suipb "github.com/vietddude/watcher/internal/infra/chain/sui/generated/sui/rpc/v2"
+	"github.com/vietddude/watcher/internal/infra/rpc"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 // Adapter implements chain.Adapter for Sui using gRPC
 type Adapter struct {
-	client  *Client
+	client  rpc.RPCClient
 	chainID string
 }
 
@@ -19,7 +22,7 @@ type Adapter struct {
 var _ chain.Adapter = (*Adapter)(nil)
 
 // NewAdapter creates a new Sui adapter
-func NewAdapter(chainID string, client *Client) *Adapter {
+func NewAdapter(chainID string, client rpc.RPCClient) *Adapter {
 	return &Adapter{
 		client:  client,
 		chainID: chainID,
@@ -28,35 +31,78 @@ func NewAdapter(chainID string, client *Client) *Adapter {
 
 // GetLatestBlock returns the latest checkpoint sequence number
 func (a *Adapter) GetLatestBlock(ctx context.Context) (uint64, error) {
-	cp, err := a.client.GetLatestCheckpoint(ctx)
+	op := rpc.NewGRPCOperation("GetServiceInfo", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+		return suipb.NewLedgerServiceClient(conn).GetServiceInfo(ctx, &suipb.GetServiceInfoRequest{})
+	})
+
+	res, err := a.client.Execute(ctx, op)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get latest checkpoint: %w", err)
+		return 0, fmt.Errorf("failed to get service info: %w", err)
 	}
-	return cp.GetSequenceNumber(), nil
+
+	info, ok := res.(*suipb.GetServiceInfoResponse)
+	if !ok {
+		return 0, fmt.Errorf("invalid response type: %T", res)
+	}
+
+	if info.CheckpointHeight == nil {
+		return 0, fmt.Errorf("service info missing checkpoint height")
+	}
+	return *info.CheckpointHeight, nil
 }
 
 // GetBlock returns a block by number (lightweight)
 func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
-	cp, err := a.client.GetCheckpoint(ctx, blockNumber)
+	op := rpc.NewGRPCOperation("GetCheckpoint", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+		mask, err := fieldmaskpb.New(&suipb.Checkpoint{}, "sequence_number", "digest", "summary")
+		if err != nil {
+			return nil, err
+		}
+		req := &suipb.GetCheckpointRequest{
+			CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
+				SequenceNumber: blockNumber,
+			},
+			ReadMask: mask,
+		}
+		return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+	})
+
+	res, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get checkpoint %d: %w", blockNumber, err)
 	}
-	return a.mapCheckpointToBlock(cp)
+
+	resp, ok := res.(*suipb.GetCheckpointResponse)
+	if !ok {
+		return nil, fmt.Errorf("invalid response type: %T", res)
+	}
+	if resp.Checkpoint == nil {
+		return nil, fmt.Errorf("checkpoint %d not found", blockNumber)
+	}
+
+	return a.mapCheckpointToBlock(resp.Checkpoint)
 }
 
 // GetBlockByHash returns a block by digest
 func (a *Adapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
-	req := &suipb.GetCheckpointRequest{
-		CheckpointId: &suipb.GetCheckpointRequest_Digest{
-			Digest: blockHash,
-		},
-		// We probably only need summary here too for verification
-		// CheckpointByHash is usually for reorg checking or verification
-	}
+	op := rpc.NewGRPCOperation("GetCheckpoint", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+		req := &suipb.GetCheckpointRequest{
+			CheckpointId: &suipb.GetCheckpointRequest_Digest{
+				Digest: blockHash,
+			},
+			// Default mask or similar to GetBlock
+		}
+		return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+	})
 
-	resp, err := a.client.ledger.GetCheckpoint(ctx, req)
+	res, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get checkpoint by digest %s: %w", blockHash, err)
+	}
+
+	resp, ok := res.(*suipb.GetCheckpointResponse)
+	if !ok {
+		return nil, fmt.Errorf("invalid response type: %T", res)
 	}
 
 	if resp.Checkpoint == nil {
@@ -72,9 +118,39 @@ func (a *Adapter) GetTransactions(
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
 	// Fetches the checkpoint details to ensure we have transactions.
-	cp, err := a.client.GetCheckpointDetails(ctx, block.Number)
+	op := rpc.NewGRPCOperation("GetCheckpointDetails", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+		mask, err := fieldmaskpb.New(
+			&suipb.Checkpoint{},
+			"sequence_number",
+			"digest",
+			"summary",
+			"transactions",
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		req := &suipb.GetCheckpointRequest{
+			CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
+				SequenceNumber: block.Number,
+			},
+			ReadMask: mask,
+		}
+		return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+	})
+
+	res, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, err
+	}
+
+	resp, ok := res.(*suipb.GetCheckpointResponse)
+	if !ok {
+		return nil, fmt.Errorf("invalid response type: %T", res)
+	}
+	cp := resp.Checkpoint
+	if cp == nil {
+		return nil, fmt.Errorf("checkpoint %d not found", block.Number)
 	}
 
 	var txs []*domain.Transaction
@@ -115,10 +191,34 @@ func (a *Adapter) VerifyBlockHash(
 	blockNumber uint64,
 	expectedHash string,
 ) (bool, error) {
-	cp, err := a.client.GetCheckpoint(ctx, blockNumber)
+	op := rpc.NewGRPCOperation("GetCheckpoint", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+		mask, err := fieldmaskpb.New(&suipb.Checkpoint{}, "sequence_number", "digest")
+		if err != nil {
+			return nil, err
+		}
+		req := &suipb.GetCheckpointRequest{
+			CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
+				SequenceNumber: blockNumber,
+			},
+			ReadMask: mask,
+		}
+		return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+	})
+
+	res, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return false, err
 	}
+
+	resp, ok := res.(*suipb.GetCheckpointResponse)
+	if !ok {
+		return false, fmt.Errorf("invalid response type: %T", res)
+	}
+	cp := resp.Checkpoint
+	if cp == nil {
+		return false, fmt.Errorf("checkpoint not found")
+	}
+
 	return cp.GetDigest() == expectedHash, nil
 }
 
@@ -156,9 +256,37 @@ func (a *Adapter) HasRelevantTransactions(
 	}
 
 	// 2. Fetch lightweight checkpoint with ONLY ownership info
-	cp, err := a.client.GetCheckpointTransactionOwners(ctx, block.Number)
+	op := rpc.NewGRPCOperation("GetCheckpointOwners", func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+		mask, err := fieldmaskpb.New(&suipb.Checkpoint{},
+			"transactions.transaction.sender",
+			"transactions.effects.changed_objects.output_owner.address",
+			"transactions.effects.changed_objects.output_owner.kind",
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		req := &suipb.GetCheckpointRequest{
+			CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
+				SequenceNumber: block.Number,
+			},
+			ReadMask: mask,
+		}
+		return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+	})
+
+	res, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return false, fmt.Errorf("failed to get checkpoint owners: %w", err)
+	}
+
+	resp, ok := res.(*suipb.GetCheckpointResponse)
+	if !ok {
+		return false, fmt.Errorf("invalid response type: %T", res)
+	}
+	cp := resp.Checkpoint
+	if cp == nil {
+		return false, fmt.Errorf("checkpoint not found")
 	}
 
 	// 3. Iterate and check for matches

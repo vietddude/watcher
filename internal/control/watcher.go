@@ -185,8 +185,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		if chainCfg.Type == "sui" {
 			// Use the coordinated provider (which wraps generic providers)
 			// The Sui Client now accepts a rpc.Provider
-			client := sui.NewClient(coordinatedProvider)
-			adapter = sui.NewAdapter(chainID, client)
+			adapter = sui.NewAdapter(chainID, coordinatedProvider)
 		} else {
 			adapter = evm.NewEVMAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
 		}

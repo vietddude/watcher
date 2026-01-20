@@ -60,4 +60,31 @@ var (
 		},
 		[]string{"chain"},
 	)
+
+	// RPCProviderHealthScore tracks provider health score (0-100)
+	RPCProviderHealthScore = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_rpc_provider_health_score",
+			Help: "Provider health score (0-100, higher is better)",
+		},
+		[]string{"chain", "provider"},
+	)
+
+	// RPCProviderQuotaUsage tracks provider quota usage percentage
+	RPCProviderQuotaUsage = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_rpc_provider_quota_usage_ratio",
+			Help: "Provider quota usage as a ratio (0-1)",
+		},
+		[]string{"chain", "provider"},
+	)
+
+	// RPCProviderLatencySeconds tracks provider average latency
+	RPCProviderLatencySeconds = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_rpc_provider_latency_seconds",
+			Help: "Provider average response latency in seconds",
+		},
+		[]string{"chain", "provider"},
+	)
 )

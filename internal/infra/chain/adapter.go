@@ -6,7 +6,9 @@ import (
 	"github.com/vietddude/watcher/internal/core/domain"
 )
 
-// Adapter defines the interface that all chain implementations must satisfy
+// Adapter defines the chain-level execution interface.
+// This is a high-level boundary between the core watcher and chain-specific logic.
+// The interface is intentionally broad to allow chain-specific optimizations.
 type Adapter interface {
 	// GetLatestBlock returns the latest block number on the chain
 	GetLatestBlock(ctx context.Context) (uint64, error)

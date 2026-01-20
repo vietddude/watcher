@@ -8,53 +8,43 @@ import (
 	"github.com/vietddude/watcher/internal/infra/rpc"
 )
 
-// MockProvider implements rpc.Provider for testing
-type MockProvider struct {
-	CallFunc func(ctx context.Context, method string, params []any) (any, error)
+type MockRPCClient struct {
+	CallFunc func(ctx context.Context, method string, params any) (any, error)
 }
 
-func (m *MockProvider) Call(ctx context.Context, method string, params []any) (any, error) {
-	if m.CallFunc != nil {
-		return m.CallFunc(ctx, method, params)
-	}
-	return nil, nil
+func (m *MockRPCClient) Call(ctx context.Context, method string, params []any) (any, error) {
+	return m.CallFunc(ctx, method, params)
 }
 
-func (m *MockProvider) BatchCall(
-	ctx context.Context,
-	requests []rpc.BatchRequest,
-) ([]rpc.BatchResponse, error) {
-	return nil, nil
+func (m *MockRPCClient) Execute(ctx context.Context, op rpc.Operation) (any, error) {
+	// HTTP path
+	return m.CallFunc(ctx, op.Name, op.Params)
 }
-
-func (m *MockProvider) GetName() string             { return "mock" }
-func (m *MockProvider) GetHealth() rpc.HealthStatus { return rpc.HealthStatus{Available: true} }
-func (m *MockProvider) Close() error                { return nil }
 
 func TestEVMAdapter_GetLatestBlock(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
 			if method == "eth_blockNumber" {
-				return "0x12d687", nil // 1234567 in hex
+				return "0x12d687", nil // 1234567
 			}
 			return nil, nil
 		},
 	}
 
 	adapter := NewEVMAdapter("ethereum", mock, 12)
-	height, err := adapter.GetLatestBlock(context.Background())
 
+	height, err := adapter.GetLatestBlock(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if height != 1234567 {
-		t.Errorf("expected height 1234567, got %d", height)
+		t.Fatalf("expected 1234567, got %d", height)
 	}
 }
 
 func TestEVMAdapter_GetBlock(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
 			if method == "eth_getBlockByNumber" {
 				return map[string]any{
 					"number":     "0x12d687",
@@ -62,7 +52,7 @@ func TestEVMAdapter_GetBlock(t *testing.T) {
 					"parentHash": "0xabc122",
 					"timestamp":  "0x65678900",
 					"transactions": []any{
-						"0xtx1", "0xtx2", "0xtx3",
+						"tx1", "tx2", "tx3",
 					},
 					"gasUsed":  "0x5208",
 					"gasLimit": "0x1234567",
@@ -74,11 +64,12 @@ func TestEVMAdapter_GetBlock(t *testing.T) {
 	}
 
 	adapter := NewEVMAdapter("ethereum", mock, 12)
-	block, err := adapter.GetBlock(context.Background(), 1234567)
 
+	block, err := adapter.GetBlock(context.Background(), 1234567)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if block.Number != 1234567 {
 		t.Errorf("expected block number 1234567, got %d", block.Number)
 	}
@@ -91,26 +82,22 @@ func TestEVMAdapter_GetBlock(t *testing.T) {
 }
 
 func TestEVMAdapter_GetTransactions(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
 			if method == "eth_getBlockByNumber" {
 				return map[string]any{
-					"number":     "0x12d687",
-					"hash":       "0xabc123",
-					"parentHash": "0xabc122",
-					"timestamp":  "0x65678900",
 					"transactions": []any{
 						map[string]any{
-							"hash":             "0xtx1hash",
+							"hash":             "0xtx1",
 							"from":             "0xAlice",
 							"to":               "0xBob",
-							"value":            "0xde0b6b3a7640000", // 1 ETH
+							"value":            "0x1",
 							"transactionIndex": "0x0",
 							"gas":              "0x5208",
 							"gasPrice":         "0x3b9aca00",
 						},
 						map[string]any{
-							"hash":             "0xtx2hash",
+							"hash":             "0xtx2",
 							"from":             "0xCharlie",
 							"to":               "0xDave",
 							"value":            "0x0",
@@ -126,6 +113,7 @@ func TestEVMAdapter_GetTransactions(t *testing.T) {
 	}
 
 	adapter := NewEVMAdapter("ethereum", mock, 12)
+
 	block := &domain.Block{
 		Number:    1234567,
 		Hash:      "0xabc123",
@@ -134,16 +122,14 @@ func TestEVMAdapter_GetTransactions(t *testing.T) {
 	}
 
 	txs, err := adapter.GetTransactions(context.Background(), block)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(txs) != 2 {
-		t.Fatalf("expected 2 transactions, got %d", len(txs))
+		t.Fatalf("expected 2 txs, got %d", len(txs))
 	}
 
-	// Check first tx
-	if txs[0].From != "0xalice" { // Should be lowercased
+	if txs[0].From != "0xalice" {
 		t.Errorf("expected from=0xalice, got %s", txs[0].From)
 	}
 	if txs[0].To != "0xbob" {
@@ -161,15 +147,15 @@ func TestEVMAdapter_FilterTransactions(t *testing.T) {
 		{TxHash: "tx4", From: "0xfrank", To: "0xalice"},
 	}
 
-	watchedAddresses := []string{"0xalice", "0xbob"}
+	addresses := []string{"0xalice", "0xbob"}
 
-	filtered, err := adapter.FilterTransactions(context.Background(), txs, watchedAddresses)
-
+	filtered, err := adapter.FilterTransactions(context.Background(), txs, addresses)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if len(filtered) != 3 {
-		t.Fatalf("expected 3 filtered transactions (tx1, tx3, tx4), got %d", len(filtered))
+		t.Fatalf("expected 3 txs, got %d", len(filtered))
 	}
 }
 
@@ -177,14 +163,14 @@ func TestEVMAdapter_SupportsBloomFilter(t *testing.T) {
 	adapter := NewEVMAdapter("ethereum", nil, 12)
 
 	if !adapter.SupportsBloomFilter() {
-		t.Error("EVM adapter SHOULD support bloom filter")
+		t.Fatal("EVM adapter should support bloom filter")
 	}
 }
 
-func TestEVMAdapter_ParseHexString(t *testing.T) {
+func TestParseHexString(t *testing.T) {
 	tests := []struct {
-		input    string
-		expected uint64
+		in  string
+		out uint64
 	}{
 		{"0x0", 0},
 		{"0x1", 1},
@@ -194,13 +180,12 @@ func TestEVMAdapter_ParseHexString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result, err := parseHexString(tt.input)
+		n, err := parseHexString(tt.in)
 		if err != nil {
-			t.Errorf("unexpected error for %s: %v", tt.input, err)
-			continue
+			t.Fatalf("unexpected error for %s: %v", tt.in, err)
 		}
-		if result != tt.expected {
-			t.Errorf("for %s: expected %d, got %d", tt.input, tt.expected, result)
+		if n != tt.out {
+			t.Fatalf("for %s: expected %d, got %d", tt.in, tt.out, n)
 		}
 	}
 }

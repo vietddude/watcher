@@ -3,98 +3,93 @@ package sui
 import (
 	"context"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	v2 "github.com/vietddude/watcher/internal/infra/chain/sui/generated/sui/rpc/v2"
+	"github.com/vietddude/watcher/internal/infra/rpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Manual mock implementation
-type MockLedgerClient struct {
-	GetServiceInfoFunc func(ctx context.Context, in *v2.GetServiceInfoRequest, opts ...grpc.CallOption) (*v2.GetServiceInfoResponse, error)
-	GetCheckpointFunc  func(ctx context.Context, in *v2.GetCheckpointRequest, opts ...grpc.CallOption) (*v2.GetCheckpointResponse, error)
-	GetTransactionFunc func(ctx context.Context, in *v2.GetTransactionRequest, opts ...grpc.CallOption) (*v2.GetTransactionResponse, error)
+// MockRPCClient implementation
+type MockRPCClient struct {
+	conn *grpc.ClientConn
 }
 
-func (m *MockLedgerClient) GetServiceInfo(
-	ctx context.Context,
-	in *v2.GetServiceInfoRequest,
-	opts ...grpc.CallOption,
-) (*v2.GetServiceInfoResponse, error) {
+func (m *MockRPCClient) Execute(ctx context.Context, op rpc.Operation) (any, error) {
+	if op.GRPCHandler != nil {
+		return op.GRPCHandler(ctx, m.conn)
+	}
+	return nil, fmt.Errorf("mock only supports grpc")
+}
+
+func (m *MockRPCClient) Call(ctx context.Context, method string, params []any) (any, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// Ensure MockLedgerClient implements v2.LedgerServiceServer
+type MockLedgerServer struct {
+	v2.UnimplementedLedgerServiceServer
+	GetServiceInfoFunc func(context.Context, *v2.GetServiceInfoRequest) (*v2.GetServiceInfoResponse, error)
+	GetCheckpointFunc  func(context.Context, *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error)
+	GetTransactionFunc func(context.Context, *v2.GetTransactionRequest) (*v2.GetTransactionResponse, error)
+}
+
+func (m *MockLedgerServer) GetServiceInfo(ctx context.Context, in *v2.GetServiceInfoRequest) (*v2.GetServiceInfoResponse, error) {
 	if m.GetServiceInfoFunc != nil {
-		return m.GetServiceInfoFunc(ctx, in, opts...)
+		return m.GetServiceInfoFunc(ctx, in)
 	}
-	return nil, fmt.Errorf("GetServiceInfo not implemented in mock")
+	return nil, fmt.Errorf("GetServiceInfo not implemented")
 }
 
-func (m *MockLedgerClient) GetCheckpoint(
-	ctx context.Context,
-	in *v2.GetCheckpointRequest,
-	opts ...grpc.CallOption,
-) (*v2.GetCheckpointResponse, error) {
+func (m *MockLedgerServer) GetCheckpoint(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
 	if m.GetCheckpointFunc != nil {
-		return m.GetCheckpointFunc(ctx, in, opts...)
+		return m.GetCheckpointFunc(ctx, in)
 	}
-	return nil, fmt.Errorf("GetCheckpoint not implemented in mock")
+	return nil, fmt.Errorf("GetCheckpoint not implemented")
 }
 
-func (m *MockLedgerClient) GetTransaction(
-	ctx context.Context,
-	in *v2.GetTransactionRequest,
-	opts ...grpc.CallOption,
-) (*v2.GetTransactionResponse, error) {
-	if m.GetTransactionFunc != nil {
-		return m.GetTransactionFunc(ctx, in, opts...)
+// Helpers to setup test environment
+func setupTestAdapter(t *testing.T, server *MockLedgerServer) *Adapter {
+	// Start listener
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
 	}
-	return nil, fmt.Errorf("GetTransaction not implemented in mock")
-}
 
-// Stubs for interface compliance
-func (m *MockLedgerClient) GetObject(
-	ctx context.Context,
-	in *v2.GetObjectRequest,
-	opts ...grpc.CallOption,
-) (*v2.GetObjectResponse, error) {
-	return nil, nil
-}
+	s := grpc.NewServer()
+	v2.RegisterLedgerServiceServer(s, server)
+	go s.Serve(lis)
 
-func (m *MockLedgerClient) BatchGetObjects(
-	ctx context.Context,
-	in *v2.BatchGetObjectsRequest,
-	opts ...grpc.CallOption,
-) (*v2.BatchGetObjectsResponse, error) {
-	return nil, nil
-}
+	// Connect
+	conn, err := grpc.Dial(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("did not connect: %v", err)
+	}
 
-func (m *MockLedgerClient) BatchGetTransactions(
-	ctx context.Context,
-	in *v2.BatchGetTransactionsRequest,
-	opts ...grpc.CallOption,
-) (*v2.BatchGetTransactionsResponse, error) {
-	return nil, nil
-}
+	t.Cleanup(func() {
+		conn.Close()
+		s.Stop()
+	})
 
-func (m *MockLedgerClient) GetEpoch(
-	ctx context.Context,
-	in *v2.GetEpochRequest,
-	opts ...grpc.CallOption,
-) (*v2.GetEpochResponse, error) {
-	return nil, nil
+	mockRPC := &MockRPCClient{conn: conn}
+	return NewAdapter("SUI_TEST", mockRPC)
 }
 
 func TestGetLatestBlock(t *testing.T) {
 	checkpointHeight := uint64(100)
 
-	mockClient := &MockLedgerClient{
-		GetServiceInfoFunc: func(ctx context.Context, in *v2.GetServiceInfoRequest, opts ...grpc.CallOption) (*v2.GetServiceInfoResponse, error) {
+	mockServer := &MockLedgerServer{
+		GetServiceInfoFunc: func(ctx context.Context, in *v2.GetServiceInfoRequest) (*v2.GetServiceInfoResponse, error) {
 			return &v2.GetServiceInfoResponse{
 				CheckpointHeight: &checkpointHeight,
 			}, nil
 		},
-		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest, opts ...grpc.CallOption) (*v2.GetCheckpointResponse, error) {
+		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
 			if in.GetSequenceNumber() != 100 {
 				t.Errorf("Expected sequence number 100, got %d", in.GetSequenceNumber())
 			}
@@ -106,8 +101,7 @@ func TestGetLatestBlock(t *testing.T) {
 		},
 	}
 
-	client := NewClientFromService(mockClient)
-	adapter := NewAdapter("SUI_TEST", client)
+	adapter := setupTestAdapter(t, mockServer)
 
 	height, err := adapter.GetLatestBlock(context.Background())
 	if err != nil {
@@ -124,8 +118,8 @@ func TestGetBlock(t *testing.T) {
 	prevDigest := "digest_122"
 	timestamp := time.Now()
 
-	mockClient := &MockLedgerClient{
-		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest, opts ...grpc.CallOption) (*v2.GetCheckpointResponse, error) {
+	mockServer := &MockLedgerServer{
+		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
 			if in.GetSequenceNumber() != 123 {
 				t.Errorf("Expected sequence number 123, got %d", in.GetSequenceNumber())
 			}
@@ -145,8 +139,7 @@ func TestGetBlock(t *testing.T) {
 		},
 	}
 
-	client := NewClientFromService(mockClient)
-	adapter := NewAdapter("SUI_TEST", client)
+	adapter := setupTestAdapter(t, mockServer)
 
 	block, err := adapter.GetBlock(context.Background(), 123)
 	if err != nil {
@@ -175,8 +168,8 @@ func TestGetTransactions(t *testing.T) {
 	sender := "sender_addr"
 	success := true
 
-	mockClient := &MockLedgerClient{
-		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest, opts ...grpc.CallOption) (*v2.GetCheckpointResponse, error) {
+	mockServer := &MockLedgerServer{
+		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
 			return &v2.GetCheckpointResponse{
 				Checkpoint: &v2.Checkpoint{
 					SequenceNumber: &seqNum,
@@ -198,8 +191,7 @@ func TestGetTransactions(t *testing.T) {
 		},
 	}
 
-	client := NewClientFromService(mockClient)
-	adapter := NewAdapter("SUI_TEST", client)
+	adapter := setupTestAdapter(t, mockServer)
 
 	block := &domain.Block{Number: 123}
 	txs, err := adapter.GetTransactions(context.Background(), block)

@@ -18,7 +18,7 @@ import (
 // API docs: https://developers.tron.network/reference
 type TronAdapter struct {
 	chainID        string
-	rpcProvider    rpc.Provider
+	client         rpc.RPCClient
 	bloomFilter    *filter.BloomFilter
 	finalityBlocks uint64
 	log            logger.Logger
@@ -27,10 +27,10 @@ type TronAdapter struct {
 // NewTronAdapter creates a new Tron adapter.
 // Note: Tron uses HTTP endpoints like /wallet/getnowblock, /wallet/getblockbynum
 // The rpcProvider should be configured to call Tron's HTTP API.
-func NewTronAdapter(chainID string, provider rpc.Provider, finalityBlocks uint64) *TronAdapter {
+func NewTronAdapter(chainID string, client rpc.RPCClient, finalityBlocks uint64) *TronAdapter {
 	return &TronAdapter{
 		chainID:        chainID,
-		rpcProvider:    provider,
+		client:         client,
 		bloomFilter:    filter.NewBloomFilter(),
 		finalityBlocks: finalityBlocks,
 		log:            *logger.Default(),
@@ -40,7 +40,8 @@ func NewTronAdapter(chainID string, provider rpc.Provider, finalityBlocks uint64
 // GetLatestBlock returns the latest block number on Tron.
 func (a *TronAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 	// Tron API: POST /wallet/getnowblock
-	result, err := a.rpcProvider.Call(ctx, "getnowblock", []any{})
+	op := rpc.NewRESTOperation("wallet/getnowblock", "POST", nil)
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get latest block: %w", err)
 	}
@@ -72,7 +73,8 @@ func (a *TronAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 // GetBlock returns block data for a specific block number.
 func (a *TronAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
 	// Tron API: POST /wallet/getblockbynum with {"num": blockNumber}
-	result, err := a.rpcProvider.Call(ctx, "getblockbynum", []any{blockNumber})
+	op := rpc.NewRESTOperation("wallet/getblockbynum", "POST", map[string]any{"num": blockNumber})
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block %d: %w", blockNumber, err)
 	}
@@ -88,7 +90,8 @@ func (a *TronAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain
 // GetBlockByHash returns block data for a specific block hash.
 func (a *TronAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
 	// Tron API: POST /wallet/getblockbyid with {"value": blockHash}
-	result, err := a.rpcProvider.Call(ctx, "getblockbyid", []any{blockHash})
+	op := rpc.NewRESTOperation("wallet/getblockbyid", "POST", map[string]any{"value": blockHash})
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block by hash %s: %w", blockHash, err)
 	}
@@ -111,7 +114,8 @@ func (a *TronAdapter) GetTransactions(
 	}
 
 	// Get full block data with transactions
-	result, err := a.rpcProvider.Call(ctx, "getblockbynum", []any{block.Number})
+	op := rpc.NewRESTOperation("wallet/getblockbynum", "POST", map[string]any{"num": block.Number})
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get block transactions: %w", err)
 	}
@@ -216,9 +220,14 @@ func (a *TronAdapter) SupportsBloomFilter() bool {
 
 // EnrichTransaction fetches additional transaction info (energy, bandwidth, logs).
 // Call this for transactions that match your filter to get full details.
-// API: POST /wallet/gettransactioninfobyid
 func (a *TronAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
-	result, err := a.rpcProvider.Call(ctx, "gettransactioninfobyid", []any{tx.TxHash})
+	// API: POST /wallet/gettransactioninfobyid
+	op := rpc.NewRESTOperation(
+		"wallet/gettransactioninfobyid",
+		"POST",
+		map[string]any{"value": tx.TxHash},
+	)
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return fmt.Errorf("failed to get transaction info: %w", err)
 	}
@@ -255,7 +264,12 @@ func (a *TronAdapter) GetTransactionLogs(
 	ctx context.Context,
 	txHash string,
 ) ([]map[string]any, error) {
-	result, err := a.rpcProvider.Call(ctx, "gettransactioninfobyid", []any{txHash})
+	op := rpc.NewRESTOperation(
+		"wallet/gettransactioninfobyid",
+		"POST",
+		map[string]any{"value": txHash},
+	)
+	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction info: %w", err)
 	}

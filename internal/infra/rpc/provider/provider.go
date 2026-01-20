@@ -11,6 +11,8 @@ package provider
 import (
 	"context"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 // Operation represents an RPC operation to execute.
@@ -42,6 +44,10 @@ type Operation struct {
 	// NOTE: For gRPC providers, this is REQUIRED and wraps the generated client call.
 	// NOTE: For HTTP providers, if set, this takes precedence over Params.
 	Invoke func(ctx context.Context) (any, error)
+
+	// GRPCHandler is a function that takes a gRPC connection and executes the operation.
+	// This enables load-balanced gRPC calls where the provider injects the connection.
+	GRPCHandler func(ctx context.Context, conn grpc.ClientConnInterface) (any, error)
 }
 
 // Provider defines the core interface for any RPC provider (HTTP or gRPC).

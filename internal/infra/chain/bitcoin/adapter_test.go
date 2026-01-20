@@ -8,32 +8,25 @@ import (
 	"github.com/vietddude/watcher/internal/infra/rpc"
 )
 
-// MockProvider implements rpc.Provider for testing
-type MockProvider struct {
-	CallFunc func(ctx context.Context, method string, params []any) (any, error)
+// MockRPCClient implements rpc.RPCClient for testing
+type MockRPCClient struct {
+	CallFunc func(ctx context.Context, method string, params any) (any, error)
 }
 
-func (m *MockProvider) Call(ctx context.Context, method string, params []any) (any, error) {
-	if m.CallFunc != nil {
-		return m.CallFunc(ctx, method, params)
+func (m *MockRPCClient) Call(ctx context.Context, method string, params []any) (any, error) {
+	return m.CallFunc(ctx, method, params)
+}
+
+func (m *MockRPCClient) Execute(ctx context.Context, op rpc.Operation) (any, error) {
+	if op.Invoke != nil {
+		return op.Invoke(ctx)
 	}
-	return nil, nil
+	return m.CallFunc(ctx, op.Name, op.Params)
 }
-
-func (m *MockProvider) BatchCall(
-	ctx context.Context,
-	requests []rpc.BatchRequest,
-) ([]rpc.BatchResponse, error) {
-	return nil, nil
-}
-
-func (m *MockProvider) GetName() string             { return "mock" }
-func (m *MockProvider) GetHealth() rpc.HealthStatus { return rpc.HealthStatus{Available: true} }
-func (m *MockProvider) Close() error                { return nil }
 
 func TestBitcoinAdapter_GetLatestBlock(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
 			if method == "getblockcount" {
 				return float64(800000), nil
 			}
@@ -53,8 +46,8 @@ func TestBitcoinAdapter_GetLatestBlock(t *testing.T) {
 }
 
 func TestBitcoinAdapter_GetBlock(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
 			if method == "getblockhash" {
 				return "00000000000000000001a2b3c4d5e6f7", nil
 			}

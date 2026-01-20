@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"google.golang.org/grpc"
 )
 
 // NewOperation creates an Operation with a custom Invoke function.
@@ -57,6 +58,19 @@ func NewRESTOperation(path string, method string, body any) Operation {
 		Params:     body,
 		IsREST:     true,
 		RESTMethod: method,
+	}
+}
+
+// NewGRPCOperation creates an Operation for gRPC calls.
+// The handler receives the active connection from the provider.
+func NewGRPCOperation(
+	name string,
+	handler func(ctx context.Context, conn grpc.ClientConnInterface) (any, error),
+) Operation {
+	return provider.Operation{
+		Name:        name,
+		Cost:        1,
+		GRPCHandler: handler,
 	}
 }
 

@@ -8,33 +8,32 @@ import (
 	"github.com/vietddude/watcher/internal/infra/rpc"
 )
 
-// MockProvider implements rpc.Provider for testing
-type MockProvider struct {
-	CallFunc func(ctx context.Context, method string, params []any) (any, error)
+// MockRPCClient implements rpc.RPCClient for testing
+type MockRPCClient struct {
+	CallFunc func(ctx context.Context, method string, params any) (any, error)
 }
 
-func (m *MockProvider) Call(ctx context.Context, method string, params []any) (any, error) {
+func (m *MockRPCClient) Call(ctx context.Context, method string, params []any) (any, error) {
 	if m.CallFunc != nil {
 		return m.CallFunc(ctx, method, params)
 	}
 	return nil, nil
 }
 
-func (m *MockProvider) BatchCall(
-	ctx context.Context,
-	requests []rpc.BatchRequest,
-) ([]rpc.BatchResponse, error) {
+func (m *MockRPCClient) Execute(ctx context.Context, op rpc.Operation) (any, error) {
+	if op.Invoke != nil {
+		return op.Invoke(ctx)
+	}
+	if m.CallFunc != nil {
+		return m.CallFunc(ctx, op.Name, op.Params)
+	}
 	return nil, nil
 }
 
-func (m *MockProvider) GetName() string             { return "mock" }
-func (m *MockProvider) GetHealth() rpc.HealthStatus { return rpc.HealthStatus{Available: true} }
-func (m *MockProvider) Close() error                { return nil }
-
 func TestTronAdapter_GetLatestBlock(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
-			if method == "getnowblock" {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
+			if method == "wallet/getnowblock" {
 				return map[string]any{
 					"blockID": "0000000003abc123",
 					"block_header": map[string]any{
@@ -61,9 +60,9 @@ func TestTronAdapter_GetLatestBlock(t *testing.T) {
 }
 
 func TestTronAdapter_GetBlock(t *testing.T) {
-	mock := &MockProvider{
-		CallFunc: func(ctx context.Context, method string, params []any) (any, error) {
-			if method == "getblockbynum" {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
+			if method == "wallet/getblockbynum" {
 				return map[string]any{
 					"blockID": "0000000003abc123",
 					"block_header": map[string]any{
