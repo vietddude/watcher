@@ -7,7 +7,6 @@ It only pulls **what you actually care about**, and it tries very hard to **not 
 
 If your RPC is flaky, rate-limited, or slow - Watcher assumes that’s normal.
 
----
 
 ## Why Watcher exists
 
@@ -18,7 +17,6 @@ If your RPC is flaky, rate-limited, or slow - Watcher assumes that’s normal.
 
 Watcher is designed around those constraints.
 
----
 
 ## Design principles
 
@@ -27,7 +25,6 @@ Watcher is designed around those constraints.
 * 90% of transactions are **irrelevant**
 * Trust **your database**, not the RPC
 
----
 
 ## What it actually does
 
@@ -76,17 +73,14 @@ Watcher is designed around those constraints.
 * Grafana dashboards
 * `/health` and `/metrics` endpoints
 
----
 
 ## What Watcher is NOT
-
-❌ A full-chain analytics engine
-❌ A replacement for The Graph
-❌ A high-frequency trading indexer
+* ❌ A full-chain analytics engine
+* ❌ A replacement for The Graph
+* ❌ A high-frequency trading indexer
 
 Watcher is meant to be **backend infrastructure**, not a data warehouse.
 
----
 
 ## Quick start
 
@@ -124,7 +118,6 @@ budget:
 make run
 ```
 
----
 
 ## Useful commands
 
@@ -134,8 +127,6 @@ make run
 | `make test`       | Run tests         |
 | `make docker-up`  | Start infra       |
 | `make migrate-up` | Run DB migrations |
-
----
 
 ## Mental model
 
