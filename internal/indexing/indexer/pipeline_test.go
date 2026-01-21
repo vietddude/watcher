@@ -11,10 +11,6 @@ import (
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
-// =============================================================================
-// Mocks
-// =============================================================================
-
 type mockAdapter struct {
 	blocks map[uint64]*domain.Block
 	txs    map[string][]*domain.Transaction
@@ -50,34 +46,44 @@ func (m *mockAdapter) VerifyBlockHash(ctx context.Context, num uint64, hash stri
 func (m *mockAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
 	return nil
 }
-func (m *mockAdapter) GetFinalityDepth() uint64  { return 0 }
-func (m *mockAdapter) GetChainID() string        { return "mock" }
-func (m *mockAdapter) SupportsBloomFilter() bool { return false }
+func (m *mockAdapter) GetFinalityDepth() uint64   { return 0 }
+func (m *mockAdapter) GetChainID() domain.ChainID { return "mock" }
+func (m *mockAdapter) SupportsBloomFilter() bool  { return false }
 
 type mockCursorMgr struct {
 	current uint64
 	state   cursor.State
 }
 
-func (m *mockCursorMgr) Get(ctx context.Context, chainID string) (*domain.Cursor, error) {
-	return &domain.Cursor{CurrentBlock: m.current, State: m.state}, nil
+func (m *mockCursorMgr) Get(ctx context.Context, chainID domain.ChainID) (*domain.Cursor, error) {
+	return &domain.Cursor{BlockNumber: m.current, State: m.state}, nil
 }
 
 func (m *mockCursorMgr) Advance(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 	hash string,
 ) error {
 	m.current = num
 	return nil
 }
-func (m *mockCursorMgr) SetState(ctx context.Context, c string, s cursor.State, r string) error {
+
+func (m *mockCursorMgr) SetState(
+	ctx context.Context,
+	chainID domain.ChainID,
+	s cursor.State,
+	r string,
+) error {
 	m.state = s
 	return nil
 }
 
-func (m *mockCursorMgr) Jump(ctx context.Context, chainID string, blockNumber uint64) error {
+func (m *mockCursorMgr) Jump(
+	ctx context.Context,
+	chainID domain.ChainID,
+	blockNumber uint64,
+) error {
 	m.current = blockNumber
 	return nil
 }
@@ -85,7 +91,7 @@ func (m *mockCursorMgr) Jump(ctx context.Context, chainID string, blockNumber ui
 // Stubs
 func (m *mockCursorMgr) Initialize(
 	ctx context.Context,
-	c string,
+	chainID domain.ChainID,
 	s uint64,
 ) (*domain.Cursor, error) {
 	return nil, nil
@@ -93,7 +99,7 @@ func (m *mockCursorMgr) Initialize(
 
 func (m *mockCursorMgr) Rollback(
 	ctx context.Context,
-	c string,
+	chainID domain.ChainID,
 	b uint64,
 	h string,
 ) error {
@@ -102,7 +108,7 @@ func (m *mockCursorMgr) Rollback(
 
 func (m *mockCursorMgr) Pause(
 	ctx context.Context,
-	c string,
+	chainID domain.ChainID,
 	r string,
 ) error {
 	return nil
@@ -110,28 +116,28 @@ func (m *mockCursorMgr) Pause(
 
 func (m *mockCursorMgr) Resume(
 	ctx context.Context,
-	c string,
+	chainID domain.ChainID,
 ) error {
 	return nil
 }
 
 func (m *mockCursorMgr) GetLag(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 	l uint64,
 ) (int64, error) {
 	return 0, nil
 }
-func (m *mockCursorMgr) SetMetadata(ctx context.Context, c, k string, v any) error {
+func (m *mockCursorMgr) SetMetadata(ctx context.Context, c domain.ChainID, k string, v any) error {
 	return nil
 }
 
 func (m *mockCursorMgr) GetMetrics(
-	c string,
+	c domain.ChainID,
 ) cursor.Metrics {
 	return cursor.Metrics{}
 }
-func (m *mockCursorMgr) SetStateChangeCallback(fn func(string, cursor.Transition)) {}
+func (m *mockCursorMgr) SetStateChangeCallback(fn func(domain.ChainID, cursor.Transition)) {}
 
 type mockFilter struct {
 	events []*domain.Event
@@ -190,7 +196,7 @@ func (m *mockBlockRepo) Save(ctx context.Context, b *domain.Block) error {
 
 func (m *mockBlockRepo) GetByNumber(
 	ctx context.Context,
-	c string,
+	chainID domain.ChainID,
 	n uint64,
 ) (*domain.Block, error) {
 	for _, b := range m.saved {
@@ -205,17 +211,22 @@ func (m *mockBlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) e
 
 func (m *mockBlockRepo) GetByHash(
 	ctx context.Context,
-	chainID, hash string,
+	chainID domain.ChainID,
+	hash string,
 ) (*domain.Block, error) {
 	return nil, nil
 }
-func (m *mockBlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
+
+func (m *mockBlockRepo) GetLatest(
+	ctx context.Context,
+	chainID domain.ChainID,
+) (*domain.Block, error) {
 	return nil, nil
 }
 
 func (m *mockBlockRepo) UpdateStatus(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 	status domain.BlockStatus,
 ) error {
@@ -224,25 +235,26 @@ func (m *mockBlockRepo) UpdateStatus(
 
 func (m *mockBlockRepo) FindGaps(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	from, to uint64,
 ) ([]storage.Gap, error) {
 	return nil, nil
 }
-func (m *mockBlockRepo) DeleteRange(ctx context.Context, chainID string, from, to uint64) error {
+
+func (m *mockBlockRepo) DeleteRange(
+	ctx context.Context,
+	chainID domain.ChainID,
+	from, to uint64,
+) error {
 	return nil
 }
 func (m *mockBlockRepo) DeleteBlocksOlderThan(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	timestamp uint64,
 ) error {
 	return nil
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 func TestPipeline_ProcessNextBlock_NormalFlow(t *testing.T) {
 	// Setup Mocks
@@ -251,7 +263,7 @@ func TestPipeline_ProcessNextBlock_NormalFlow(t *testing.T) {
 			1001: {Number: 1001, Hash: "hash_1001", ParentHash: "hash_1000"},
 		},
 		txs: map[string][]*domain.Transaction{
-			"hash_1001": {{TxHash: "tx1", From: "addr1", To: "addr2"}},
+			"hash_1001": {{Hash: "tx1", From: "addr1", To: "addr2"}},
 		},
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -29,7 +30,7 @@ type ReorgInfo struct {
 // Returns ReorgInfo with Detected=true if reorg found.
 func (d *Detector) CheckParentHash(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	newBlockNum uint64,
 	parentHash string,
 ) (*ReorgInfo, error) {
@@ -60,8 +61,9 @@ func (d *Detector) CheckParentHash(
 		return nil, fmt.Errorf("failed to find safe point: %w", err)
 	}
 
-	metrics.ReorgsDetected.WithLabelValues(chainID).Inc()
-	metrics.ReorgDepth.WithLabelValues(chainID).Observe(float64(depth))
+	chainName, _ := domain.ChainNameFromID(chainID)
+	metrics.ReorgsDetected.WithLabelValues(chainName).Inc()
+	metrics.ReorgDepth.WithLabelValues(chainName).Observe(float64(depth))
 
 	return &ReorgInfo{
 		Detected:  true,
@@ -76,7 +78,7 @@ func (d *Detector) CheckParentHash(
 // Uses only stored data (no RPC calls).
 func (d *Detector) findSafePoint(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	fromBlock uint64,
 ) (safeBlock uint64, safeHash string, depth int, err error) {
 	// Start from the mismatched block and go backwards
@@ -129,7 +131,7 @@ func (d *Detector) findSafePoint(
 // Only use this when you need to confirm a reorg.
 func (d *Detector) VerifyWithRPC(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNum uint64,
 	fetcher HashFetcher,
 ) (bool, error) {

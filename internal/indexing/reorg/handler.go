@@ -20,7 +20,7 @@ type Handler struct {
 
 // RollbackResult contains the result of a rollback operation.
 type RollbackResult struct {
-	ChainID        string
+	ChainID        domain.ChainID
 	OrphanedBlocks int
 	RevertedTxs    int
 	FromBlock      uint64
@@ -30,7 +30,7 @@ type RollbackResult struct {
 
 // RevertEvent is emitted for each reverted transaction.
 type RevertEvent struct {
-	ChainID       string
+	ChainID       domain.ChainID
 	TxHash        string
 	BlockNumber   uint64
 	ReorgDetected time.Time
@@ -49,7 +49,7 @@ func (h *Handler) SetRevertCallback(fn func(event RevertEvent)) {
 // 4. Reset cursor
 func (h *Handler) Rollback(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	fromBlock, safeBlock uint64,
 	safeHash string,
 ) (*RollbackResult, error) {
@@ -75,8 +75,8 @@ func (h *Handler) Rollback(
 
 		for _, tx := range txs {
 			// Mark transaction as invalid
-			if err := h.txRepo.UpdateStatus(ctx, chainID, tx.TxHash, domain.TxStatusInvalid); err != nil {
-				return nil, fmt.Errorf("failed to mark tx %s as invalid: %w", tx.TxHash, err)
+			if err := h.txRepo.UpdateStatus(ctx, chainID, tx.Hash, domain.TxStatusInvalid); err != nil {
+				return nil, fmt.Errorf("failed to mark tx %s as invalid: %w", tx.Hash, err)
 			}
 			result.RevertedTxs++
 
@@ -84,7 +84,7 @@ func (h *Handler) Rollback(
 			if h.callback != nil {
 				h.callback(RevertEvent{
 					ChainID:       chainID,
-					TxHash:        tx.TxHash,
+					TxHash:        tx.Hash,
 					BlockNumber:   blockNum,
 					ReorgDetected: time.Now(),
 					Reason:        "blockchain_reorganization",
@@ -98,12 +98,21 @@ func (h *Handler) Rollback(
 		return nil, fmt.Errorf("failed to rollback cursor: %w", err)
 	}
 
+	// Step 5: Reset state to Scanning
+	if err := h.cursorMgr.SetState(ctx, chainID, domain.CursorStateScanning, "reorg resolved"); err != nil {
+		return nil, fmt.Errorf("failed to reset cursor state: %w", err)
+	}
+
 	result.Duration = time.Since(start)
 	return result, nil
 }
 
 // CanRecover checks if recovery is possible (safe block exists).
-func (h *Handler) CanRecover(ctx context.Context, chainID string, safeBlock uint64) (bool, error) {
+func (h *Handler) CanRecover(
+	ctx context.Context,
+	chainID domain.ChainID,
+	safeBlock uint64,
+) (bool, error) {
 	block, err := h.blockRepo.GetByNumber(ctx, chainID, safeBlock)
 	if err != nil {
 		return false, err

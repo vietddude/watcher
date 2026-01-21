@@ -3,6 +3,7 @@ package config
 import (
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	redisclient "github.com/vietddude/watcher/internal/infra/redis"
 	"github.com/vietddude/watcher/internal/infra/storage/postgres"
 )
@@ -29,7 +30,7 @@ type LoggingConfig struct {
 
 // ChainConfig holds settings for a specific blockchain.
 type ChainConfig struct {
-	ChainID         string           `yaml:"id"               mapstructure:"id"`
+	ChainID         domain.ChainID   `yaml:"id"               mapstructure:"id"`
 	Type            string           `yaml:"type"             mapstructure:"type"`          // e.g., "evm", "bitcoin"
 	InternalCode    string           `yaml:"internal_code"    mapstructure:"internal_code"` // e.g., "ETHEREUM_MAINNET"
 	FinalityBlocks  uint64           `yaml:"finality_blocks"  mapstructure:"finality_blocks"`

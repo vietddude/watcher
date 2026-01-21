@@ -39,7 +39,7 @@
 //	manager.Rollback(ctx, "ethereum", 995, "0xsafe...")
 //
 //	// Track state changes
-//	manager.SetStateChangeCallback(func(chainID string, t cursor.Transition) {
+//	manager.SetStateChangeCallback(func(chainID domain.ChainID, t cursor.Transition) {
 //	    log.Printf("Cursor %s: %s -> %s (%s)", chainID, t.From, t.To, t.Reason)
 //	})
 //

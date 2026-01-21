@@ -115,7 +115,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 		slog.Info("Cursor initialized", "startBlock", startBlock)
 	}
 
-	targetBlockNum := cursor.CurrentBlock + 1
+	targetBlockNum := cursor.BlockNumber + 1
 
 	// 2. Fetch block data (Adapter provides domain.Block)
 	block, err := p.cfg.ChainAdapter.GetBlock(ctx, targetBlockNum)
@@ -171,7 +171,11 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 		var err error
 		txs, err = p.cfg.ChainAdapter.GetTransactions(ctx, block)
 		if err != nil {
-			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("fetch txs failed: %w", err))
+			return false, p.handleError(
+				ctx,
+				targetBlockNum,
+				fmt.Errorf("fetch txs failed: %w", err),
+			)
 		}
 	}
 
@@ -180,7 +184,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	if p.cfg.ChainType == "sui" {
 		label = "checkpoint"
 	}
-	slog.Info(
+	slog.Debug(
 		fmt.Sprintf("Processing %s", label),
 		"chain",
 		p.cfg.ChainName,
@@ -199,7 +203,6 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 
 	// Record metrics
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
-
 	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
 	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
 
@@ -220,7 +223,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	// 6. Enrich matched transactions with receipt data (gas used, status)
 	for _, tx := range relevantTxs {
 		if err := p.cfg.ChainAdapter.EnrichTransaction(ctx, tx); err != nil {
-			slog.Warn("Failed to enrich transaction", "tx", tx.TxHash, "error", err)
+			slog.Warn("Failed to enrich transaction", "tx", tx.Hash, "error", err)
 		}
 	}
 
@@ -241,7 +244,6 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	var events []*domain.Event
 	for _, tx := range relevantTxs {
 		events = append(events, &domain.Event{
-			ID:          tx.TxHash,
 			EventType:   domain.EventTypeTransactionConfirmed,
 			ChainID:     p.cfg.ChainID,
 			BlockNumber: block.Number,

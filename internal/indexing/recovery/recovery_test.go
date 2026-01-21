@@ -22,7 +22,10 @@ func (r *mockFailedRepo) Add(ctx context.Context, b *domain.FailedBlock) error {
 	return nil
 }
 
-func (r *mockFailedRepo) GetNext(ctx context.Context, chainID string) (*domain.FailedBlock, error) {
+func (r *mockFailedRepo) GetNext(
+	ctx context.Context,
+	chainID domain.ChainID,
+) (*domain.FailedBlock, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.blocks) > 0 {
@@ -58,11 +61,11 @@ func (r *mockFailedRepo) MarkResolved(ctx context.Context, id string) error {
 
 func (r *mockFailedRepo) GetAll(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) ([]*domain.FailedBlock, error) {
 	return r.blocks, nil
 }
-func (r *mockFailedRepo) Count(ctx context.Context, chainID string) (int, error) {
+func (r *mockFailedRepo) Count(ctx context.Context, chainID domain.ChainID) (int, error) {
 	return len(r.blocks), nil
 }
 
@@ -135,7 +138,7 @@ func TestHandler_ProcessNext_Success(t *testing.T) {
 		LastAttempt: uint64(time.Now().Add(-1 * time.Hour).Unix()),
 	})
 
-	fetcher := func(ctx context.Context, chainID string, blockNum uint64) error {
+	fetcher := func(ctx context.Context, chainID domain.ChainID, blockNum uint64) error {
 		return nil // Success
 	}
 
@@ -163,7 +166,7 @@ func TestHandler_ProcessNext_Wait(t *testing.T) {
 	})
 
 	called := false
-	fetcher := func(ctx context.Context, chainID string, blockNum uint64) error {
+	fetcher := func(ctx context.Context, chainID domain.ChainID, blockNum uint64) error {
 		called = true
 		return nil
 	}
@@ -190,7 +193,7 @@ func TestHandler_ProcessNext_FailAndIncrement(t *testing.T) {
 		LastAttempt: uint64(time.Now().Add(-1 * time.Hour).Unix()),
 	})
 
-	fetcher := func(ctx context.Context, chainID string, blockNum uint64) error {
+	fetcher := func(ctx context.Context, chainID domain.ChainID, blockNum uint64) error {
 		return errors.New("still failing")
 	}
 

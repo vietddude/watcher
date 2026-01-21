@@ -16,7 +16,7 @@ type mockFetcher struct {
 	err    error
 }
 
-func (m *mockFetcher) GetLatestHeight(ctx context.Context, chainID string) (uint64, error) {
+func (m *mockFetcher) GetLatestHeight(ctx context.Context, chainID domain.ChainID) (uint64, error) {
 	return m.height, m.err
 }
 
@@ -25,20 +25,20 @@ type stubCursorMgr struct {
 	lag int64
 }
 
-func (s *stubCursorMgr) GetLag(ctx context.Context, c string, l uint64) (int64, error) {
+func (s *stubCursorMgr) GetLag(ctx context.Context, c domain.ChainID, l uint64) (int64, error) {
 	return s.lag, nil
 }
 
 func (s *stubCursorMgr) Get(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 ) (*domain.Cursor, error) {
 	return nil, nil
 }
 
 func (s *stubCursorMgr) Initialize(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 	st uint64,
 ) (*domain.Cursor, error) {
 	return nil, nil
@@ -46,23 +46,29 @@ func (s *stubCursorMgr) Initialize(
 
 func (s *stubCursorMgr) Advance(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 	b uint64,
 	h string,
 ) error {
 	return nil
 }
-func (s *stubCursorMgr) SetState(ctx context.Context, c string, st cursor.State, r string) error {
+
+func (s *stubCursorMgr) SetState(
+	ctx context.Context,
+	c domain.ChainID,
+	st cursor.State,
+	r string,
+) error {
 	return nil
 }
 
-func (s *stubCursorMgr) Jump(ctx context.Context, c string, b uint64) error {
+func (s *stubCursorMgr) Jump(ctx context.Context, c domain.ChainID, b uint64) error {
 	return nil
 }
 
 func (s *stubCursorMgr) Rollback(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 	b uint64,
 	h string,
 ) error {
@@ -71,7 +77,7 @@ func (s *stubCursorMgr) Rollback(
 
 func (s *stubCursorMgr) Pause(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 	r string,
 ) error {
 	return nil
@@ -79,15 +85,15 @@ func (s *stubCursorMgr) Pause(
 
 func (s *stubCursorMgr) Resume(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 ) error {
 	return nil
 }
-func (s *stubCursorMgr) SetMetadata(ctx context.Context, c, k string, v any) error {
+func (s *stubCursorMgr) SetMetadata(ctx context.Context, c domain.ChainID, k string, v any) error {
 	return nil
 }
-func (s *stubCursorMgr) GetMetrics(c string) cursor.Metrics { return cursor.Metrics{} }
-func (s *stubCursorMgr) SetStateChangeCallback(fn func(string, cursor.Transition)) {
+func (s *stubCursorMgr) GetMetrics(c domain.ChainID) cursor.Metrics { return cursor.Metrics{} }
+func (s *stubCursorMgr) SetStateChangeCallback(fn func(domain.ChainID, cursor.Transition)) {
 }
 
 // Stub Missing Repo
@@ -97,12 +103,16 @@ type stubMissingRepo struct {
 
 func (s *stubMissingRepo) Count(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 ) (int, error) {
 	return s.count, nil
 }
 func (s *stubMissingRepo) Add(ctx context.Context, v *domain.MissingBlock) error { return nil }
-func (s *stubMissingRepo) GetNext(ctx context.Context, c string) (*domain.MissingBlock, error) {
+
+func (s *stubMissingRepo) GetNext(
+	ctx context.Context,
+	c domain.ChainID,
+) (*domain.MissingBlock, error) {
 	return nil, nil
 }
 func (s *stubMissingRepo) MarkProcessing(ctx context.Context, id string) error { return nil }
@@ -113,14 +123,14 @@ func (s *stubMissingRepo) MarkFailed(ctx context.Context, id, msg string) error 
 
 func (s *stubMissingRepo) GetPending(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 ) ([]*domain.MissingBlock, error) {
 	return nil, nil
 }
 
 func (s *stubMissingRepo) FindGaps(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 	f, t uint64,
 ) ([]storage.Gap, error) {
 	return nil, nil
@@ -133,17 +143,25 @@ type stubFailedRepo struct {
 
 func (s *stubFailedRepo) Count(
 	ctx context.Context,
-	c string,
+	c domain.ChainID,
 ) (int, error) {
 	return s.count, nil
 }
 func (s *stubFailedRepo) Add(ctx context.Context, v *domain.FailedBlock) error { return nil }
-func (s *stubFailedRepo) GetNext(ctx context.Context, c string) (*domain.FailedBlock, error) {
+
+func (s *stubFailedRepo) GetNext(
+	ctx context.Context,
+	c domain.ChainID,
+) (*domain.FailedBlock, error) {
 	return nil, nil
 }
 func (s *stubFailedRepo) IncrementRetry(ctx context.Context, id string) error { return nil }
 func (s *stubFailedRepo) MarkResolved(ctx context.Context, id string) error   { return nil }
-func (s *stubFailedRepo) GetAll(ctx context.Context, c string) ([]*domain.FailedBlock, error) {
+
+func (s *stubFailedRepo) GetAll(
+	ctx context.Context,
+	c domain.ChainID,
+) ([]*domain.FailedBlock, error) {
 	return nil, nil
 }
 func (s *stubFailedRepo) Delete(ctx context.Context, id string) error { return nil }
@@ -151,23 +169,28 @@ func (s *stubFailedRepo) Delete(ctx context.Context, id string) error { return n
 // Stub Budget Tracker
 type stubBudgetTracker struct{}
 
-func (s *stubBudgetTracker) RecordCall(chainID, providerName, method string) {}
-func (s *stubBudgetTracker) GetUsage(chainID string) budget.UsageStats {
+func (s *stubBudgetTracker) RecordCall(chainID domain.ChainID, providerName, method string) {}
+func (s *stubBudgetTracker) GetUsage(chainID domain.ChainID) budget.UsageStats {
 	return budget.UsageStats{}
 }
-func (s *stubBudgetTracker) GetProviderUsage(chainID, providerName string) budget.UsageStats {
+
+func (s *stubBudgetTracker) GetProviderUsage(
+	chainID domain.ChainID,
+	providerName string,
+) budget.UsageStats {
 	return budget.UsageStats{}
 }
-func (s *stubBudgetTracker) CanMakeCall(chainID string) bool                  { return true }
-func (s *stubBudgetTracker) CanUseProvider(chainID, providerName string) bool { return true }
-func (s *stubBudgetTracker) GetThrottleDelay(chainID string) time.Duration    { return 0 }
-func (s *stubBudgetTracker) GetUsagePercent() float64                         { return 0 }
-func (s *stubBudgetTracker) Reset()                                           {}
+func (s *stubBudgetTracker) CanMakeCall(chainID domain.ChainID) bool { return true }
+func (s *stubBudgetTracker) CanUseProvider(chainID domain.ChainID, providerName string) bool {
+	return true
+}
+func (s *stubBudgetTracker) GetThrottleDelay(chainID domain.ChainID) time.Duration { return 0 }
+func (s *stubBudgetTracker) GetUsagePercent() float64                              { return 0 }
+func (s *stubBudgetTracker) Reset()                                                {}
 
 func TestMonitor_Healthy(t *testing.T) {
 	monitor := NewMonitor(
-		map[string]string{"ethereum": "ETH"},
-		nil,
+		map[domain.ChainID][]string{domain.ChainID("ethereum"): {"ETH"}},
 		&stubCursorMgr{lag: 5},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
@@ -186,8 +209,7 @@ func TestMonitor_Healthy(t *testing.T) {
 
 func TestMonitor_Degraded(t *testing.T) {
 	monitor := NewMonitor(
-		map[string]string{"ethereum": "ETH"},
-		nil,
+		map[domain.ChainID][]string{domain.ChainID("ethereum"): {"ETH"}},
 		&stubCursorMgr{lag: 50},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},
@@ -206,8 +228,7 @@ func TestMonitor_Degraded(t *testing.T) {
 
 func TestMonitor_Critical(t *testing.T) {
 	monitor := NewMonitor(
-		map[string]string{"ethereum": "ETH"},
-		nil,
+		map[domain.ChainID][]string{domain.ChainID("ethereum"): {"ETH"}},
 		&stubCursorMgr{lag: 200},
 		&stubMissingRepo{count: 0},
 		&stubFailedRepo{count: 0},

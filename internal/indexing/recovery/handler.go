@@ -11,7 +11,7 @@ import (
 )
 
 // BackfillFetcher is a callback to retry processing a block.
-type BackfillFetcher func(ctx context.Context, chainID string, blockNum uint64) error
+type BackfillFetcher func(ctx context.Context, chainID domain.ChainID, blockNum uint64) error
 
 // Handler processes the failed block queue.
 type Handler struct {
@@ -34,7 +34,7 @@ func NewHandler(
 }
 
 // ProcessNext picks the next failed block and retries it if backoff allows.
-func (h *Handler) ProcessNext(ctx context.Context, chainID string) error {
+func (h *Handler) ProcessNext(ctx context.Context, chainID domain.ChainID) error {
 	failedBlock, err := h.repo.GetNext(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get next failed block: %w", err)
@@ -67,7 +67,7 @@ func (h *Handler) ProcessNext(ctx context.Context, chainID string) error {
 // It creates a new FailedBlock entry.
 func (h *Handler) HandleFailure(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNum uint64,
 	err error,
 ) error {

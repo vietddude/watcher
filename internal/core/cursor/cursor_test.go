@@ -15,16 +15,16 @@ import (
 
 type mockCursorRepo struct {
 	mu      sync.RWMutex
-	cursors map[string]*domain.Cursor
+	cursors map[domain.ChainID]*domain.Cursor
 }
 
 func newMockCursorRepo() *mockCursorRepo {
 	return &mockCursorRepo{
-		cursors: make(map[string]*domain.Cursor),
+		cursors: make(map[domain.ChainID]*domain.Cursor),
 	}
 }
 
-func (r *mockCursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, error) {
+func (r *mockCursorRepo) Get(ctx context.Context, chainID domain.ChainID) (*domain.Cursor, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -42,14 +42,13 @@ func (r *mockCursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error 
 	defer r.mu.Unlock()
 
 	c := *cursor
-	c.UpdatedAt = uint64(time.Now().Unix())
 	r.cursors[cursor.ChainID] = &c
 	return nil
 }
 
 func (r *mockCursorRepo) UpdateBlock(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNumber uint64,
 	blockHash string,
 ) error {
@@ -60,15 +59,14 @@ func (r *mockCursorRepo) UpdateBlock(
 	if !ok {
 		return ErrCursorNotFound
 	}
-	cursor.CurrentBlock = blockNumber
-	cursor.CurrentBlockHash = blockHash
-	cursor.UpdatedAt = uint64(time.Now().Unix())
+	cursor.BlockNumber = blockNumber
+	cursor.BlockHash = blockHash
 	return nil
 }
 
 func (r *mockCursorRepo) UpdateState(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	state domain.CursorState,
 ) error {
 	r.mu.Lock()
@@ -79,13 +77,12 @@ func (r *mockCursorRepo) UpdateState(
 		return ErrCursorNotFound
 	}
 	cursor.State = state
-	cursor.UpdatedAt = uint64(time.Now().Unix())
 	return nil
 }
 
 func (r *mockCursorRepo) Rollback(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNumber uint64,
 	blockHash string,
 ) error {
@@ -96,9 +93,8 @@ func (r *mockCursorRepo) Rollback(
 	if !ok {
 		return ErrCursorNotFound
 	}
-	cursor.CurrentBlock = blockNumber
-	cursor.CurrentBlockHash = blockHash
-	cursor.UpdatedAt = uint64(time.Now().Unix())
+	cursor.BlockNumber = blockNumber
+	cursor.BlockHash = blockHash
 	return nil
 }
 
@@ -147,10 +143,6 @@ func TestTransitionIsValid(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// Manager Tests
-// =============================================================================
-
 func TestManagerInitialize(t *testing.T) {
 	repo := newMockCursorRepo()
 	manager := NewManager(repo)
@@ -164,8 +156,8 @@ func TestManagerInitialize(t *testing.T) {
 	if cursor.ChainID != "ethereum" {
 		t.Errorf("expected chainID 'ethereum', got %s", cursor.ChainID)
 	}
-	if cursor.CurrentBlock != 1000 {
-		t.Errorf("expected block 1000, got %d", cursor.CurrentBlock)
+	if cursor.BlockNumber != 1000 {
+		t.Errorf("expected block 1000, got %d", cursor.BlockNumber)
 	}
 	if cursor.State != domain.CursorStateInit {
 		t.Errorf("expected state init, got %s", cursor.State)
@@ -194,8 +186,8 @@ func TestManagerAdvance(t *testing.T) {
 
 	// Verify cursor updated
 	cursor, _ := manager.Get(ctx, "ethereum")
-	if cursor.CurrentBlock != 1001 {
-		t.Errorf("expected block 1001, got %d", cursor.CurrentBlock)
+	if cursor.BlockNumber != 1001 {
+		t.Errorf("expected block 1001, got %d", cursor.BlockNumber)
 	}
 }
 
@@ -239,7 +231,7 @@ func TestManagerRollback(t *testing.T) {
 
 	// Track state changes
 	var transitions []Transition
-	manager.SetStateChangeCallback(func(chainID string, t Transition) {
+	manager.SetStateChangeCallback(func(chainID domain.ChainID, t Transition) {
 		transitions = append(transitions, t)
 	})
 
@@ -250,7 +242,7 @@ func TestManagerRollback(t *testing.T) {
 	for i := uint64(1001); i <= 1005; i++ {
 		repo.UpdateBlock(ctx, "ethereum", i, "0x...")
 	}
-	repo.cursors["ethereum"].CurrentBlock = 1005
+	repo.cursors["ethereum"].BlockNumber = 1005
 
 	// Rollback to block 1002
 	err := manager.Rollback(ctx, "ethereum", 1002, "0xsafe")
@@ -259,8 +251,8 @@ func TestManagerRollback(t *testing.T) {
 	}
 
 	cursor, _ := manager.Get(ctx, "ethereum")
-	if cursor.CurrentBlock != 1002 {
-		t.Errorf("expected block 1002 after rollback, got %d", cursor.CurrentBlock)
+	if cursor.BlockNumber != 1002 {
+		t.Errorf("expected block 1002 after rollback, got %d", cursor.BlockNumber)
 	}
 	if cursor.State != domain.CursorStateReorg {
 		t.Errorf("expected reorg state, got %s", cursor.State)

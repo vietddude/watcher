@@ -25,6 +25,7 @@
 package backfill
 
 import (
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -35,7 +36,7 @@ type Gap struct {
 }
 
 // BlockFetcher is called to fetch and process a single block.
-type BlockFetcher func(chainID string, blockNum uint64) error
+type BlockFetcher func(chainID domain.ChainID, blockNum uint64) error
 
 // NewDetector creates a new gap detector.
 func NewDetector(

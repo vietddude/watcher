@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/storage"
@@ -70,7 +71,11 @@ func (p *Processor) SetBudgetTracker(b rpc.BudgetTracker) {
 // ProcessOne fetches ONE missing block, respecting rate limits.
 // Returns ErrQuotaExceeded if quota is too high.
 // Returns ErrNoMissingBlocks if queue is empty.
-func (p *Processor) ProcessOne(ctx context.Context, chainID, chainName string) error {
+func (p *Processor) ProcessOne(
+	ctx context.Context,
+	chainID domain.ChainID,
+	chainName string,
+) error {
 	// Check rate limit
 	if !p.canProcess(chainID) {
 		delay := p.getDelay(chainID)
@@ -129,7 +134,8 @@ func (p *Processor) ProcessOne(ctx context.Context, chainID, chainName string) e
 }
 
 // Run starts background processing. Blocks until context is cancelled.
-func (p *Processor) Run(ctx context.Context, chainID, chainName string) error {
+func (p *Processor) Run(ctx context.Context, chainID domain.ChainID) error {
+	chainName, _ := domain.ChainNameFromID(chainID)
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
@@ -166,41 +172,41 @@ func (p *Processor) Run(ctx context.Context, chainID, chainName string) error {
 }
 
 // GetStats returns processing statistics for a chain.
-func (p *Processor) GetStats(chainID string) ProcessorStats {
+func (p *Processor) GetStats(chainID domain.ChainID) ProcessorStats {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if p.stats == nil {
 		return ProcessorStats{}
 	}
-	if s, ok := p.stats[chainID]; ok {
+	if s, ok := p.stats[string(chainID)]; ok {
 		return *s
 	}
 	return ProcessorStats{}
 }
 
-func (p *Processor) canProcess(chainID string) bool {
+func (p *Processor) canProcess(chainID domain.ChainID) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if p.lastProcessed == nil {
 		return true
 	}
-	last, ok := p.lastProcessed[chainID]
+	last, ok := p.lastProcessed[string(chainID)]
 	if !ok {
 		return true
 	}
 	return time.Since(last) >= p.config.MinInterval
 }
 
-func (p *Processor) getDelay(chainID string) time.Duration {
+func (p *Processor) getDelay(chainID domain.ChainID) time.Duration {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if p.lastProcessed == nil {
 		return 0
 	}
-	last, ok := p.lastProcessed[chainID]
+	last, ok := p.lastProcessed[string(chainID)]
 	if !ok {
 		return 0
 	}
@@ -211,7 +217,7 @@ func (p *Processor) getDelay(chainID string) time.Duration {
 	return p.config.MinInterval - elapsed
 }
 
-func (p *Processor) recordProcessed(chainID, chainName string) {
+func (p *Processor) recordProcessed(chainID domain.ChainID, chainName string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -222,27 +228,27 @@ func (p *Processor) recordProcessed(chainID, chainName string) {
 		p.stats = make(map[string]*ProcessorStats)
 	}
 
-	p.lastProcessed[chainID] = time.Now()
+	p.lastProcessed[string(chainID)] = time.Now()
 
-	if _, ok := p.stats[chainID]; !ok {
-		p.stats[chainID] = &ProcessorStats{}
+	if _, ok := p.stats[string(chainID)]; !ok {
+		p.stats[string(chainID)] = &ProcessorStats{}
 	}
-	p.stats[chainID].ProcessedCount++
-	p.stats[chainID].LastProcessed = time.Now()
+	p.stats[string(chainID)].ProcessedCount++
+	p.stats[string(chainID)].LastProcessed = time.Now()
 
 	// Update metrics
 	metrics.BackfillBlocksProcessed.WithLabelValues(chainName).Inc()
 }
 
-func (p *Processor) recordFailed(chainID string) {
+func (p *Processor) recordFailed(chainID domain.ChainID) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.stats == nil {
 		p.stats = make(map[string]*ProcessorStats)
 	}
-	if _, ok := p.stats[chainID]; !ok {
-		p.stats[chainID] = &ProcessorStats{}
+	if _, ok := p.stats[string(chainID)]; !ok {
+		p.stats[string(chainID)] = &ProcessorStats{}
 	}
-	p.stats[chainID].FailedCount++
+	p.stats[string(chainID)].FailedCount++
 }

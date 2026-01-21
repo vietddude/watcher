@@ -8,6 +8,7 @@ const (
 	CursorStateCatchup  CursorState = "catchup"
 	CursorStatePaused   CursorState = "paused"
 	CursorStateReorg    CursorState = "reorg"
+	CursorStateBackfill CursorState = "backfill"
 )
 
 // Cursor tracks indexing progress for a chain

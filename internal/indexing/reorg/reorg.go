@@ -28,11 +28,12 @@ package reorg
 
 import (
 	"github.com/vietddude/watcher/internal/core/cursor"
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
 // HashFetcher fetches block hash from RPC (used when finding safe point).
-type HashFetcher func(chainID string, blockNum uint64) (hash string, err error)
+type HashFetcher func(chainID domain.ChainID, blockNum uint64) (hash string, err error)
 
 // Config holds configuration for reorg detection.
 type Config struct {

@@ -22,7 +22,7 @@ type Detector struct {
 // It queues the missing blocks without making any RPC calls.
 func (d *Detector) OnCursorGap(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	currentBlock, newBlock uint64,
 ) error {
 	if newBlock <= currentBlock+1 {
@@ -41,7 +41,7 @@ func (d *Detector) OnCursorGap(
 // This is a periodic scan that doesn't make RPC calls.
 func (d *Detector) ScanDatabase(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	fromBlock, toBlock uint64,
 ) ([]Gap, error) {
 	dbGaps, err := d.blockRepo.FindGaps(ctx, chainID, fromBlock, toBlock)
@@ -61,7 +61,11 @@ func (d *Detector) ScanDatabase(
 }
 
 // QueueGapsFromScan queues all gaps found by ScanDatabase.
-func (d *Detector) QueueGapsFromScan(ctx context.Context, chainID string, gaps []Gap) error {
+func (d *Detector) QueueGapsFromScan(
+	ctx context.Context,
+	chainID domain.ChainID,
+	gaps []Gap,
+) error {
 	for _, gap := range gaps {
 		if err := d.queueGap(ctx, chainID, gap, priorityLow); err != nil {
 			return err
@@ -76,7 +80,12 @@ const (
 	priorityLow  = 1  // Historical gaps (from scan)
 )
 
-func (d *Detector) queueGap(ctx context.Context, chainID string, gap Gap, priority int) error {
+func (d *Detector) queueGap(
+	ctx context.Context,
+	chainID domain.ChainID,
+	gap Gap,
+	priority int,
+) error {
 	missing := &domain.MissingBlock{
 		ID:        uuid.New().String(),
 		ChainID:   chainID,

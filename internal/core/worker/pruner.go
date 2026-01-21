@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/config"
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
 
@@ -58,12 +59,12 @@ func (p *Pruner) Start(ctx context.Context) {
 func (p *Pruner) prune(ctx context.Context) {
 	threshold := uint64(time.Now().Add(-p.cfg.RetentionPeriod).Unix())
 
-	if err := p.blockRepo.DeleteBlocksOlderThan(ctx, p.cfg.ChainID, threshold); err != nil {
+	if err := p.blockRepo.DeleteBlocksOlderThan(ctx, domain.ChainID(p.cfg.ChainID), threshold); err != nil {
 		// Log error (we don't have logger here, maybe fmt?)
 		slog.Error("[Pruner] failed to prune blocks for %s: %v\n", p.cfg.ChainID, err)
 	}
 
-	if err := p.txRepo.DeleteTransactionsOlderThan(ctx, p.cfg.ChainID, threshold); err != nil {
+	if err := p.txRepo.DeleteTransactionsOlderThan(ctx, domain.ChainID(p.cfg.ChainID), threshold); err != nil {
 		slog.Error("[Pruner] failed to prune transactions for %s: %v\n", p.cfg.ChainID, err)
 	}
 }

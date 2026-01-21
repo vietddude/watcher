@@ -29,67 +29,66 @@ var (
 // Manager handles cursor operations with state machine enforcement.
 type Manager interface {
 	// Get retrieves the current cursor for a chain.
-	Get(ctx context.Context, chainID string) (*domain.Cursor, error)
+	Get(ctx context.Context, chainID domain.ChainID) (*domain.Cursor, error)
 
 	// Initialize creates a new cursor at starting block.
-	Initialize(ctx context.Context, chainID string, startBlock uint64) (*domain.Cursor, error)
+	Initialize(
+		ctx context.Context,
+		chainID domain.ChainID,
+		startBlock uint64,
+	) (*domain.Cursor, error)
 
 	// Advance moves cursor forward (validates sequential, updates state).
-	Advance(ctx context.Context, chainID string, blockNumber uint64, blockHash string) error
+	Advance(ctx context.Context, chainID domain.ChainID, blockNumber uint64, blockHash string) error
 
 	// Jump moves cursor to an arbitrary position (skips sequential check, generally for lag recovery).
-	Jump(ctx context.Context, chainID string, blockNumber uint64) error
+	Jump(ctx context.Context, chainID domain.ChainID, blockNumber uint64) error
 
 	// SetState transitions cursor to new state (validates transition).
-	SetState(ctx context.Context, chainID string, newState State, reason string) error
+	SetState(ctx context.Context, chainID domain.ChainID, newState State, reason string) error
 
 	// Rollback moves cursor back for reorg (transitions to REORG state).
-	Rollback(ctx context.Context, chainID string, safeBlock uint64, safeHash string) error
+	Rollback(ctx context.Context, chainID domain.ChainID, safeBlock uint64, safeHash string) error
 
 	// Pause pauses indexing.
-	Pause(ctx context.Context, chainID string, reason string) error
+	Pause(ctx context.Context, chainID domain.ChainID, reason string) error
 
 	// Resume resumes indexing.
-	Resume(ctx context.Context, chainID string) error
+	Resume(ctx context.Context, chainID domain.ChainID) error
 
 	// GetLag returns blocks behind current chain tip.
-	GetLag(ctx context.Context, chainID string, latestBlock uint64) (int64, error)
-
-	// SetMetadata updates cursor metadata.
-	SetMetadata(ctx context.Context, chainID string, key string, value any) error
+	GetLag(ctx context.Context, chainID domain.ChainID, latestBlock uint64) (int64, error)
 
 	// GetMetrics returns performance metrics for a chain.
-	GetMetrics(chainID string) Metrics
+	GetMetrics(chainID domain.ChainID) Metrics
 
 	// SetStateChangeCallback registers callback for state changes.
-	SetStateChangeCallback(fn func(chainID string, t Transition))
+	SetStateChangeCallback(fn func(chainID domain.ChainID, t Transition))
 }
 
 // DefaultManager implements Manager with state machine enforcement.
 type DefaultManager struct {
 	repo             storage.CursorRepository
 	mu               sync.RWMutex
-	stateCallback    func(string, Transition)
+	stateCallback    func(domain.ChainID, Transition)
 	blockTimeHistory map[string]*MetricsCollector
 }
 
 // Get retrieves the current cursor for a chain.
-func (m *DefaultManager) Get(ctx context.Context, chainID string) (*domain.Cursor, error) {
+func (m *DefaultManager) Get(ctx context.Context, chainID domain.ChainID) (*domain.Cursor, error) {
 	return m.repo.Get(ctx, chainID)
 }
 
 // Initialize creates a new cursor at starting block.
 func (m *DefaultManager) Initialize(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	startBlock uint64,
 ) (*domain.Cursor, error) {
 	cursor := &domain.Cursor{
-		ChainID:      chainID,
-		CurrentBlock: startBlock,
-		UpdatedAt:    uint64(time.Now().Unix()),
-		State:        domain.CursorStateInit,
-		Metadata:     make(map[string]any),
+		ChainID:     chainID,
+		BlockNumber: startBlock,
+		State:       domain.CursorStateInit,
 	}
 
 	if err := m.repo.Save(ctx, cursor); err != nil {
@@ -98,7 +97,7 @@ func (m *DefaultManager) Initialize(
 
 	// Initialize metrics collector
 	m.mu.Lock()
-	m.blockTimeHistory[chainID] = NewMetricsCollector(100)
+	m.blockTimeHistory[string(chainID)] = NewMetricsCollector(100)
 	m.mu.Unlock()
 
 	return cursor, nil
@@ -107,7 +106,7 @@ func (m *DefaultManager) Initialize(
 // Advance moves cursor forward after processing a block.
 func (m *DefaultManager) Advance(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNumber uint64,
 	blockHash string,
 ) error {
@@ -125,11 +124,11 @@ func (m *DefaultManager) Advance(
 	}
 
 	// Check for gap (block must be exactly current + 1)
-	expectedBlock := cursor.CurrentBlock + 1
+	expectedBlock := cursor.BlockNumber + 1
 
 	// Check for idempotency (duplicate delivery / re-process)
-	if blockNumber == cursor.CurrentBlock {
-		if blockHash == cursor.CurrentBlockHash {
+	if blockNumber == cursor.BlockNumber {
+		if blockHash == cursor.BlockHash {
 			// Already processed this exact block. Treat as success.
 			return nil
 		}
@@ -137,8 +136,8 @@ func (m *DefaultManager) Advance(
 		// For now, fail with specific error so we can distinguish it.
 		return fmt.Errorf(
 			"idempotency check failed: cursor at %d with hash %s, got same block %d with hash %s",
-			cursor.CurrentBlock,
-			cursor.CurrentBlockHash,
+			cursor.BlockNumber,
+			cursor.BlockHash,
 			blockNumber,
 			blockHash,
 		)
@@ -148,8 +147,16 @@ func (m *DefaultManager) Advance(
 		// [FIX] Race Condition Handling:
 		// If we are trying to advance to X, but DB is already at Y >= X, we are stale.
 		// This happens if a Jump() occurred while we were processing.
-		if blockNumber <= cursor.CurrentBlock {
-			slog.Warn("Cursor Advance stale", "chain", chainID, "current", cursor.CurrentBlock, "target", blockNumber)
+		if blockNumber <= cursor.BlockNumber {
+			slog.Warn(
+				"Cursor Advance stale",
+				"chain",
+				chainID,
+				"current",
+				cursor.BlockHash,
+				"target",
+				blockNumber,
+			)
 			// Treat as success (idempotent) or return specific error?
 			// If we return nil, loop continues with NEXT block from OLD cursor? No.
 			// Pipeline loop: process(target). Advance(target).
@@ -158,7 +165,17 @@ func (m *DefaultManager) Advance(
 			return nil
 		}
 
-		slog.Error("Cursor Advance gap detected", "chain", chainID, "current", cursor.CurrentBlock, "expected", expectedBlock, "got", blockNumber)
+		slog.Error(
+			"Cursor Advance gap detected",
+			"chain",
+			chainID,
+			"current",
+			cursor.BlockNumber,
+			"expected",
+			expectedBlock,
+			"got",
+			blockNumber,
+		)
 		return fmt.Errorf("%w: expected block %d, got %d", ErrBlockGap, expectedBlock, blockNumber)
 	}
 
@@ -170,7 +187,7 @@ func (m *DefaultManager) Advance(
 
 	// Record metrics
 	m.mu.Lock()
-	if collector, ok := m.blockTimeHistory[chainID]; ok {
+	if collector, ok := m.blockTimeHistory[string(chainID)]; ok {
 		collector.RecordBlock(blockNumber, time.Now())
 	}
 	m.mu.Unlock()
@@ -181,7 +198,7 @@ func (m *DefaultManager) Advance(
 // Jump forces the cursor to a new block number.
 func (m *DefaultManager) Jump(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNumber uint64,
 ) error {
 	cursor, err := m.repo.Get(ctx, chainID)
@@ -211,7 +228,7 @@ func (m *DefaultManager) Jump(
 // SetState transitions cursor to a new state.
 func (m *DefaultManager) SetState(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	newState State,
 	reason string,
 ) error {
@@ -240,7 +257,7 @@ func (m *DefaultManager) SetState(
 
 	// Record transition in metrics
 	m.mu.Lock()
-	if collector, ok := m.blockTimeHistory[chainID]; ok {
+	if collector, ok := m.blockTimeHistory[string(chainID)]; ok {
 		collector.RecordTransition(transition)
 	}
 	m.mu.Unlock()
@@ -256,7 +273,7 @@ func (m *DefaultManager) SetState(
 // Rollback moves cursor back for reorg handling.
 func (m *DefaultManager) Rollback(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	safeBlock uint64,
 	safeHash string,
 ) error {
@@ -279,7 +296,7 @@ func (m *DefaultManager) Rollback(
 
 		// Record transition
 		m.mu.Lock()
-		if collector, ok := m.blockTimeHistory[chainID]; ok {
+		if collector, ok := m.blockTimeHistory[string(chainID)]; ok {
 			collector.RecordTransition(transition)
 		}
 		m.mu.Unlock()
@@ -298,12 +315,12 @@ func (m *DefaultManager) Rollback(
 }
 
 // Pause pauses indexing for a chain.
-func (m *DefaultManager) Pause(ctx context.Context, chainID string, reason string) error {
+func (m *DefaultManager) Pause(ctx context.Context, chainID domain.ChainID, reason string) error {
 	return m.SetState(ctx, chainID, domain.CursorStatePaused, reason)
 }
 
 // Resume resumes indexing for a chain.
-func (m *DefaultManager) Resume(ctx context.Context, chainID string) error {
+func (m *DefaultManager) Resume(ctx context.Context, chainID domain.ChainID) error {
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
@@ -320,7 +337,7 @@ func (m *DefaultManager) Resume(ctx context.Context, chainID string) error {
 // GetLag returns how many blocks behind the chain tip.
 func (m *DefaultManager) GetLag(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	latestBlock uint64,
 ) (int64, error) {
 	cursor, err := m.repo.Get(ctx, chainID)
@@ -328,35 +345,17 @@ func (m *DefaultManager) GetLag(
 		return 0, fmt.Errorf("failed to get cursor: %w", err)
 	}
 
-	return int64(latestBlock) - int64(cursor.CurrentBlock), nil
+	return int64(latestBlock) - int64(cursor.BlockNumber), nil
 }
 
-// SetMetadata updates cursor metadata.
-func (m *DefaultManager) SetMetadata(
-	ctx context.Context,
-	chainID string,
-	key string,
-	value any,
-) error {
-	cursor, err := m.repo.Get(ctx, chainID)
-	if err != nil {
-		return fmt.Errorf("failed to get cursor: %w", err)
-	}
-
-	if cursor.Metadata == nil {
-		cursor.Metadata = make(map[string]any)
-	}
-	cursor.Metadata[key] = value
-
-	return m.repo.Save(ctx, cursor)
-}
+// SetMetadata removed as Metadata field is no longer in domain.Cursor
 
 // GetMetrics returns performance metrics for a chain.
-func (m *DefaultManager) GetMetrics(chainID string) Metrics {
+func (m *DefaultManager) GetMetrics(chainID domain.ChainID) Metrics {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if collector, ok := m.blockTimeHistory[chainID]; ok {
+	if collector, ok := m.blockTimeHistory[string(chainID)]; ok {
 		return collector.GetMetrics()
 	}
 
@@ -364,7 +363,7 @@ func (m *DefaultManager) GetMetrics(chainID string) Metrics {
 }
 
 // SetStateChangeCallback registers a callback for state changes.
-func (m *DefaultManager) SetStateChangeCallback(fn func(chainID string, t Transition)) {
+func (m *DefaultManager) SetStateChangeCallback(fn func(chainID domain.ChainID, t Transition)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.stateCallback = fn

@@ -17,44 +17,35 @@ import (
 
 // BlockHeightFetcher fetches the latest block height for a chain.
 type BlockHeightFetcher interface {
-	GetLatestHeight(ctx context.Context, chainID string) (uint64, error)
+	GetLatestHeight(ctx context.Context, chainID domain.ChainID) (uint64, error)
 }
 
 // Monitor aggregates health status from various system components.
 type Monitor struct {
-	chains        []string
-	chainNames    map[string]string // ID -> Name map
-	providers     map[string][]string
+	chains        []domain.ChainID
+	providers     map[domain.ChainID][]string
 	cursorMgr     cursor.Manager
 	missingRepo   storage.MissingBlockRepository
 	failedRepo    storage.FailedBlockRepository
 	budgetTracker rpc.BudgetTracker
 	heightFetcher BlockHeightFetcher
 	lastCheck     time.Time
-	lastReport    map[string]ChainHealth
-	scanIntervals map[string]time.Duration
+	lastReport    map[domain.ChainID]ChainHealth
+	scanIntervals map[domain.ChainID]time.Duration
 	mu            sync.RWMutex
 }
 
 // NewMonitor creates a new health monitor.
 func NewMonitor(
-	chainNames map[string]string,
-	providers map[string][]string,
+	providers map[domain.ChainID][]string,
 	cursorMgr cursor.Manager,
 	missingRepo storage.MissingBlockRepository,
 	failedRepo storage.FailedBlockRepository,
 	budgetTracker rpc.BudgetTracker,
 	heightFetcher BlockHeightFetcher,
-	scanIntervals map[string]time.Duration,
+	scanIntervals map[domain.ChainID]time.Duration,
 ) *Monitor {
-	chains := make([]string, 0, len(chainNames))
-	for id := range chainNames {
-		chains = append(chains, id)
-	}
-
 	return &Monitor{
-		chains:        chains,
-		chainNames:    chainNames,
 		providers:     providers,
 		cursorMgr:     cursorMgr,
 		missingRepo:   missingRepo,
@@ -62,12 +53,12 @@ func NewMonitor(
 		budgetTracker: budgetTracker,
 		heightFetcher: heightFetcher,
 		scanIntervals: scanIntervals,
-		lastReport:    make(map[string]ChainHealth),
+		lastReport:    make(map[domain.ChainID]ChainHealth),
 	}
 }
 
 // CheckHealth performs a health check for all chains.
-func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
+func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealth {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -76,7 +67,7 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 		return m.lastReport
 	}
 
-	report := make(map[string]ChainHealth)
+	report := make(map[domain.ChainID]ChainHealth)
 
 	for _, chainID := range m.chains {
 
@@ -96,12 +87,8 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 				if lag > 10 && lag <= 100 {
 					if currentInterval, ok := m.scanIntervals[chainID]; ok {
 						suggested := currentInterval / 2
-						chainName := m.chainNames[chainID]
-						if chainName == "" {
-							chainName = chainID
-						}
 						slog.Warn("Performance Warning: Indexer is lagging behind chain",
-							"chain", chainName,
+							"chain", chainID,
 							"lag", lag,
 							"current_interval", currentInterval,
 							"suggested_interval", suggested,
@@ -119,7 +106,7 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 					if currentCursor != nil {
 						// Define the gap: (current + 1) -> (latest - 1)
 						// The pipeline will pick up 'latest' after the jump.
-						gapFrom := currentCursor.CurrentBlock + 1
+						gapFrom := currentCursor.BlockNumber + 1
 						gapTo := latestHeight - 1
 
 						if gapTo >= gapFrom {
@@ -143,7 +130,13 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 							}
 
 							if err := m.missingRepo.Add(ctx, missing); err != nil {
-								slog.Error("Failed to queue backfill task", "chain", chainID, "error", err)
+								slog.Error(
+									"Failed to queue backfill task",
+									"chain",
+									chainID,
+									"error",
+									err,
+								)
 							} else {
 								slog.Info("Queued backfill task", "chain", chainID, "range", fmt.Sprintf("%d-%d", gapFrom, gapTo))
 
@@ -172,11 +165,8 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 		count, err := m.missingRepo.Count(ctx, chainID)
 		if err == nil {
 			health.MissingBlocks = count
-			if name, ok := m.chainNames[chainID]; ok {
-				metrics.BackfillBlocksQueued.WithLabelValues(name).Set(float64(count))
-			} else {
-				metrics.BackfillBlocksQueued.WithLabelValues(chainID).Set(float64(count))
-			}
+			chainName, _ := domain.ChainNameFromID(chainID)
+			metrics.BackfillBlocksQueued.WithLabelValues(chainName).Set(float64(count))
 		}
 
 		// 3. Failed Blocks
@@ -186,17 +176,14 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[string]ChainHealth {
 		}
 
 		// 4. RPC Quota Usage
-
-		// 4. RPC Quota Usage
 		if providers, ok := m.providers[chainID]; ok {
-			chainName := m.chainNames[chainID]
-			if chainName == "" {
-				chainName = chainID
-			}
+			chainName, _ := domain.ChainNameFromID(chainID)
 			for _, provider := range providers {
 				pUsage := m.budgetTracker.GetProviderUsage(chainID, provider)
-				metrics.RPCProviderQuotaUsage.WithLabelValues(chainName, provider).Set(pUsage.UsagePercentage / 100.0)
-				metrics.RPCQuotaRemaining.WithLabelValues(chainName, provider).Set(float64(pUsage.RemainingCalls))
+				metrics.RPCProviderQuotaUsage.WithLabelValues(chainName, provider).
+					Set(pUsage.UsagePercentage / 100.0)
+				metrics.RPCQuotaRemaining.WithLabelValues(chainName, provider).
+					Set(float64(pUsage.RemainingCalls))
 			}
 		}
 

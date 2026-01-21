@@ -3,7 +3,7 @@ package domain
 // Event represents an emitted blockchain event
 type Event struct {
 	EventType   EventType
-	ChainID     string
+	ChainID     ChainID
 	BlockNumber uint64
 	Transaction *Transaction
 	EmittedAt   uint64

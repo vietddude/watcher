@@ -213,9 +213,9 @@ func (a *EVMAdapter) VerifyBlockHash(
 	return strings.EqualFold(block.Hash, expectedHash), nil
 }
 
-func (a *EVMAdapter) GetFinalityDepth() uint64  { return a.finalityBlocks }
-func (a *EVMAdapter) GetChainID() string        { return string(a.chainID) }
-func (a *EVMAdapter) SupportsBloomFilter() bool { return true }
+func (a *EVMAdapter) GetFinalityDepth() uint64   { return a.finalityBlocks }
+func (a *EVMAdapter) GetChainID() domain.ChainID { return a.chainID }
+func (a *EVMAdapter) SupportsBloomFilter() bool  { return true }
 
 func (a *EVMAdapter) parseBlock(data map[string]any) (*domain.Block, error) {
 	number, err := parseHexString(data["number"].(string))

@@ -21,7 +21,7 @@ func (r *mockBlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) e
 
 func (r *mockBlockRepo) GetByNumber(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 ) (*domain.Block, error) {
 	return nil, nil
@@ -29,17 +29,21 @@ func (r *mockBlockRepo) GetByNumber(
 
 func (r *mockBlockRepo) GetByHash(
 	ctx context.Context,
-	chainID, hash string,
+	chainID domain.ChainID, hash string,
 ) (*domain.Block, error) {
 	return nil, nil
 }
-func (r *mockBlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
+
+func (r *mockBlockRepo) GetLatest(
+	ctx context.Context,
+	chainID domain.ChainID,
+) (*domain.Block, error) {
 	return nil, nil
 }
 
 func (r *mockBlockRepo) UpdateStatus(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 	status domain.BlockStatus,
 ) error {
@@ -48,7 +52,7 @@ func (r *mockBlockRepo) UpdateStatus(
 
 func (r *mockBlockRepo) FindGaps(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	from, to uint64,
 ) ([]storage.Gap, error) {
 	result := make([]storage.Gap, len(r.gaps))
@@ -57,12 +61,17 @@ func (r *mockBlockRepo) FindGaps(
 	}
 	return result, nil
 }
-func (r *mockBlockRepo) DeleteRange(ctx context.Context, chainID string, from, to uint64) error {
+
+func (r *mockBlockRepo) DeleteRange(
+	ctx context.Context,
+	chainID domain.ChainID,
+	from, to uint64,
+) error {
 	return nil
 }
 func (r *mockBlockRepo) DeleteBlocksOlderThan(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	timestamp uint64,
 ) error {
 	return nil
@@ -85,7 +94,7 @@ func (r *mockMissingRepo) Add(ctx context.Context, m *domain.MissingBlock) error
 
 func (r *mockMissingRepo) GetNext(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) (*domain.MissingBlock, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -132,12 +141,12 @@ func (r *mockMissingRepo) MarkFailed(ctx context.Context, id string, msg string)
 
 func (r *mockMissingRepo) GetPending(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) ([]*domain.MissingBlock, error) {
 	return nil, nil
 }
 
-func (r *mockMissingRepo) Count(ctx context.Context, chainID string) (int, error) {
+func (r *mockMissingRepo) Count(ctx context.Context, chainID domain.ChainID) (int, error) {
 	return len(r.blocks), nil
 }
 
@@ -149,7 +158,7 @@ func TestDetector_OnCursorGap(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate cursor at block 1000, new block is 1005
-	err := detector.OnCursorGap(ctx, "ethereum", 1000, 1005)
+	err := detector.OnCursorGap(ctx, domain.ChainID("ethereum"), 1000, 1005)
 	if err != nil {
 		t.Fatalf("OnCursorGap failed: %v", err)
 	}
@@ -177,7 +186,7 @@ func TestDetector_OnCursorGap_NoGap(t *testing.T) {
 	ctx := context.Background()
 
 	// Sequential blocks, no gap
-	err := detector.OnCursorGap(ctx, "ethereum", 1000, 1001)
+	err := detector.OnCursorGap(ctx, domain.ChainID("ethereum"), 1000, 1001)
 	if err != nil {
 		t.Fatalf("OnCursorGap failed: %v", err)
 	}
@@ -198,7 +207,7 @@ func TestDetector_ScanDatabase(t *testing.T) {
 	detector := NewDetector(blockRepo, missingRepo)
 
 	ctx := context.Background()
-	gaps, err := detector.ScanDatabase(ctx, "ethereum", 0, 1000)
+	gaps, err := detector.ScanDatabase(ctx, domain.ChainID("ethereum"), 0, 1000)
 	if err != nil {
 		t.Fatalf("ScanDatabase failed: %v", err)
 	}
@@ -210,7 +219,7 @@ func TestDetector_ScanDatabase(t *testing.T) {
 
 func TestProcessor_ProcessOne_NoBlocks(t *testing.T) {
 	missingRepo := &mockMissingRepo{}
-	fetcher := func(chainID string, blockNum uint64) error {
+	fetcher := func(chainID domain.ChainID, blockNum uint64) error {
 		return nil
 	}
 
@@ -229,7 +238,7 @@ func TestProcessor_ProcessOne_Success(t *testing.T) {
 		blocks: []*domain.MissingBlock{
 			{
 				ID:        "test-1",
-				ChainID:   "ethereum",
+				ChainID:   domain.ChainID("ethereum"),
 				FromBlock: 100,
 				ToBlock:   102,
 				Status:    domain.MissingBlockStatusPending,
@@ -238,7 +247,7 @@ func TestProcessor_ProcessOne_Success(t *testing.T) {
 	}
 
 	fetchedBlocks := []uint64{}
-	fetcher := func(chainID string, blockNum uint64) error {
+	fetcher := func(chainID domain.ChainID, blockNum uint64) error {
 		fetchedBlocks = append(fetchedBlocks, blockNum)
 		return nil
 	}
@@ -272,17 +281,17 @@ func TestProcessor_RateLimiting(t *testing.T) {
 	processor := NewProcessor(config, &mockMissingRepo{}, nil)
 
 	// Record a processed block
-	processor.recordProcessed("ethereum", "Ethereum")
+	processor.recordProcessed(domain.ChainID("ethereum"), "Ethereum")
 
 	// Should not be able to process immediately
-	if processor.canProcess("ethereum") {
+	if processor.canProcess(domain.ChainID("ethereum")) {
 		t.Error("should not be able to process immediately after last process")
 	}
 
 	// Wait for interval
 	time.Sleep(150 * time.Millisecond)
 
-	if !processor.canProcess("ethereum") {
+	if !processor.canProcess(domain.ChainID("ethereum")) {
 		t.Error("should be able to process after interval")
 	}
 }

@@ -42,8 +42,8 @@ func TestFinalityBuffer_QueueAndEmit(t *testing.T) {
 	buffer := NewFinalityBuffer(mock, 10) // 10 confirmations required
 	ctx := context.Background()
 
-	event1 := &domain.Event{BlockNumber: 100, ID: "event1"}
-	event2 := &domain.Event{BlockNumber: 101, ID: "event2"}
+	event1 := &domain.Event{BlockNumber: 100}
+	event2 := &domain.Event{BlockNumber: 101}
 
 	// Queue events
 	buffer.QueueEvent(ctx, event1)
@@ -67,8 +67,8 @@ func TestFinalityBuffer_QueueAndEmit(t *testing.T) {
 	if len(mock.EmittedEvents) != 1 {
 		t.Fatalf("expected 1 emitted event, got %d", len(mock.EmittedEvents))
 	}
-	if mock.EmittedEvents[0].ID != "event1" {
-		t.Errorf("expected event1 to be emitted, got %s", mock.EmittedEvents[0].ID)
+	if mock.EmittedEvents[0].BlockNumber != 100 {
+		t.Errorf("expected event1 to be emitted, got %d", mock.EmittedEvents[0].BlockNumber)
 	}
 
 	// Verify block 100 is no longer pending

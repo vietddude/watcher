@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/cursor"
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/emitter"
 	"github.com/vietddude/watcher/internal/indexing/filter"
 	"github.com/vietddude/watcher/internal/indexing/recovery"
@@ -27,7 +28,7 @@ type Indexer interface {
 
 // Config holds all dependencies for the pipeline
 type Config struct {
-	ChainID      string
+	ChainID      domain.ChainID
 	InternalCode string
 	ChainName    string // e.g. "SUI_TEST"
 	ChainType    string // e.g. "sui" or "evm"
@@ -50,7 +51,7 @@ type Config struct {
 
 // Status represents the current state of the indexer
 type Status struct {
-	ChainID      string
+	ChainID      domain.ChainID
 	CurrentBlock uint64
 	LatestBlock  uint64
 	Lag          int64
