@@ -2,12 +2,9 @@ package domain
 
 // WalletAddress represents a monitored wallet address
 type WalletAddress struct {
-	ID        uint64          `json:"id"`
-	Address   string          `json:"address"`
-	Type      NetworkType     `json:"network_type"`
-	Standard  AddressStandard `json:"standard"`
-	CreatedAt uint64          `json:"created_at"`
-	UpdatedAt uint64          `json:"updated_at"`
+	Address  string
+	Type     NetworkType
+	Standard AddressStandard
 }
 
 type NetworkType string

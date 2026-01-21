@@ -2,12 +2,12 @@ package domain
 
 // FailedBlock represents a block that failed processing
 type FailedBlock struct {
-	ID          string `json:"id"`
-	ChainID     string `json:"chain_id"`
-	BlockNumber uint64 `json:"block_number"`
+	ID          string
+	ChainID     ChainID
+	BlockNumber uint64
 	FailureType FailureType
-	Error       string            `json:"error_msg"`
-	RetryCount  int               `json:"retry_count"`
+	Error       string
+	RetryCount  int
 	Status      FailedBlockStatus `json:"status"`
 	LastAttempt uint64
 	CreatedAt   uint64
