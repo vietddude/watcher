@@ -75,7 +75,11 @@ func (db *DB) StartMetricsCollector(ctx context.Context) {
 				// Calculate usage percentage: (OpenConnections / MaxOpenConnections) * 100
 				// Note: MaxOpenConnections might be 0 (unlimited), handle that.
 				if stats.MaxOpenConnections > 0 {
-					usage := float64(stats.OpenConnections) / float64(stats.MaxOpenConnections) * 100
+					usage := float64(
+						stats.OpenConnections,
+					) / float64(
+						stats.MaxOpenConnections,
+					) * 100
 					metrics.DBConnectionPoolUsage.Set(usage)
 				}
 			}

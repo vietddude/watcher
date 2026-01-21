@@ -27,7 +27,7 @@ func (r *MissingBlockRepo) Add(ctx context.Context, missing *domain.MissingBlock
 	}
 
 	err := r.db.Queries.CreateMissingBlock(ctx, sqlc.CreateMissingBlockParams{
-		ChainID:   missing.ChainID,
+		ChainID:   string(missing.ChainID),
 		FromBlock: int64(missing.FromBlock),
 		ToBlock:   int64(missing.ToBlock),
 		Status:    status,
@@ -41,9 +41,9 @@ func (r *MissingBlockRepo) Add(ctx context.Context, missing *domain.MissingBlock
 // GetNext retrieves the next missing block to process.
 func (r *MissingBlockRepo) GetNext(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) (*domain.MissingBlock, error) {
-	row, err := r.db.Queries.GetNextMissingBlock(ctx, chainID)
+	row, err := r.db.Queries.GetNextMissingBlock(ctx, string(chainID))
 	if err == sql.ErrNoRows {
 		return nil, nil // Assuming no rows means no work
 	}
@@ -53,17 +53,10 @@ func (r *MissingBlockRepo) GetNext(
 
 	return &domain.MissingBlock{
 		ID:        fmt.Sprintf("%d", row.ID), // ID is int32 in DB/sqlc, string in domain?
-		ChainID:   row.ChainID,
+		ChainID:   domain.ChainID(row.ChainID),
 		FromBlock: uint64(row.FromBlock),
 		ToBlock:   uint64(row.ToBlock),
 		Status:    domain.MissingBlockStatus(row.Status),
-		// CreatedAt: row.CreatedAt.Time, // Domain MissingBlock has CreatedAt
-		// But Wait, domain MissingBlock definition:
-		// ID string
-		// ...
-		// LastAttempt time.Time
-		// Priority int
-		// CreatedAt time.Time
 	}, nil
 }
 
@@ -107,9 +100,9 @@ func (r *MissingBlockRepo) MarkFailed(ctx context.Context, id string, errorMsg s
 // GetPending retrieves all pending missing blocks.
 func (r *MissingBlockRepo) GetPending(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) ([]*domain.MissingBlock, error) {
-	rows, err := r.db.Queries.GetPendingMissingBlocks(ctx, chainID)
+	rows, err := r.db.Queries.GetPendingMissingBlocks(ctx, string(chainID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending ranges: %w", err)
 	}
@@ -118,7 +111,7 @@ func (r *MissingBlockRepo) GetPending(
 	for _, row := range rows {
 		ranges = append(ranges, &domain.MissingBlock{
 			ID:        fmt.Sprintf("%d", row.ID),
-			ChainID:   row.ChainID,
+			ChainID:   domain.ChainID(row.ChainID),
 			FromBlock: uint64(row.FromBlock),
 			ToBlock:   uint64(row.ToBlock),
 			Status:    domain.MissingBlockStatus(row.Status),
@@ -128,8 +121,8 @@ func (r *MissingBlockRepo) GetPending(
 }
 
 // Count returns the count of missing blocks.
-func (r *MissingBlockRepo) Count(ctx context.Context, chainID string) (int, error) {
-	count, err := r.db.Queries.CountPendingMissingBlocks(ctx, chainID)
+func (r *MissingBlockRepo) Count(ctx context.Context, chainID domain.ChainID) (int, error) {
+	count, err := r.db.Queries.CountPendingMissingBlocks(ctx, string(chainID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to count missing ranges: %w", err)
 	}

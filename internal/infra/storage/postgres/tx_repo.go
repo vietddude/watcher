@@ -23,8 +23,8 @@ func NewTxRepo(db *DB) *TxRepo {
 // Save saves a transaction to the database.
 func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
 	err := r.db.Queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-		ChainID:        tx.ChainID,
-		TxHash:         tx.TxHash,
+		ChainID:        string(tx.ChainID),
+		TxHash:         tx.Hash,
 		BlockNumber:    int64(tx.BlockNumber),
 		FromAddress:    tx.From,
 		ToAddress:      sql.NullString{String: tx.To, Valid: tx.To != ""},
@@ -58,8 +58,8 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 
 	for _, t := range txs {
 		err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-			ChainID:        t.ChainID,
-			TxHash:         t.TxHash,
+			ChainID:        string(t.ChainID),
+			TxHash:         t.Hash,
 			BlockNumber:    int64(t.BlockNumber),
 			FromAddress:    t.From,
 			ToAddress:      sql.NullString{String: t.To, Valid: t.To != ""},
@@ -81,11 +81,11 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 // GetByHash retrieves a transaction by hash.
 func (r *TxRepo) GetByHash(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	txHash string,
 ) (*domain.Transaction, error) {
 	row, err := r.db.Queries.GetTransactionByHash(ctx, sqlc.GetTransactionByHashParams{
-		ChainID: chainID,
+		ChainID: string(chainID),
 		TxHash:  txHash,
 	})
 	if err == sql.ErrNoRows {
@@ -101,11 +101,11 @@ func (r *TxRepo) GetByHash(
 // GetByBlock retrieves all transactions in a block.
 func (r *TxRepo) GetByBlock(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	blockNumber uint64,
 ) ([]*domain.Transaction, error) {
 	rows, err := r.db.Queries.GetTransactionsByBlock(ctx, sqlc.GetTransactionsByBlockParams{
-		ChainID:     chainID,
+		ChainID:     string(chainID),
 		BlockNumber: int64(blockNumber),
 	})
 	if err != nil {
@@ -122,22 +122,26 @@ func (r *TxRepo) GetByBlock(
 // UpdateStatus updates transaction status.
 func (r *TxRepo) UpdateStatus(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	txHash string,
 	status domain.TxStatus,
 ) error {
 	err := r.db.Queries.UpdateTransactionStatus(ctx, sqlc.UpdateTransactionStatusParams{
 		Status:  sql.NullString{String: string(status), Valid: string(status) != ""},
-		ChainID: chainID,
+		ChainID: string(chainID),
 		TxHash:  txHash,
 	})
 	return err
 }
 
 // DeleteByBlock deletes transactions in a block.
-func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, blockNumber uint64) error {
+func (r *TxRepo) DeleteByBlock(
+	ctx context.Context,
+	chainID domain.ChainID,
+	blockNumber uint64,
+) error {
 	err := r.db.Queries.DeleteTransactionsByBlock(ctx, sqlc.DeleteTransactionsByBlockParams{
-		ChainID:     chainID,
+		ChainID:     string(chainID),
 		BlockNumber: int64(blockNumber),
 	})
 	return err
@@ -145,8 +149,8 @@ func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, blockNumber 
 
 func (r *TxRepo) toDomain(row sqlc.Transaction) *domain.Transaction {
 	tx := &domain.Transaction{
-		ChainID:     row.ChainID,
-		TxHash:      row.TxHash,
+		ChainID:     domain.ChainID(row.ChainID),
+		Hash:        row.TxHash,
 		BlockNumber: uint64(row.BlockNumber),
 		From:        row.FromAddress,
 		To:          row.ToAddress.String,
@@ -163,11 +167,11 @@ func (r *TxRepo) toDomain(row sqlc.Transaction) *domain.Transaction {
 // DeleteTransactionsOlderThan deletes transactions older than the given timestamp.
 func (r *TxRepo) DeleteTransactionsOlderThan(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	timestamp uint64,
 ) error {
 	err := r.db.Queries.DeleteTransactionsOlderThan(ctx, sqlc.DeleteTransactionsOlderThanParams{
-		ChainID:        chainID,
+		ChainID:        string(chainID),
 		BlockTimestamp: int64(timestamp),
 	})
 	if err != nil {

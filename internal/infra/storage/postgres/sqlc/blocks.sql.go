@@ -127,7 +127,7 @@ func (q *Queries) FindGaps(ctx context.Context, arg FindGapsParams) ([]FindGapsR
 }
 
 const getBlockByHash = `-- name: GetBlockByHash :one
-SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, tx_count, status, metadata, created_at FROM blocks
+SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status, created_at FROM blocks
 WHERE chain_id = $1 AND block_hash = $2
 LIMIT 1
 `
@@ -146,16 +146,14 @@ func (q *Queries) GetBlockByHash(ctx context.Context, arg GetBlockByHashParams) 
 		&i.BlockHash,
 		&i.ParentHash,
 		&i.BlockTimestamp,
-		&i.TxCount,
 		&i.Status,
-		&i.Metadata,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getBlockByNumber = `-- name: GetBlockByNumber :one
-SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, tx_count, status, metadata, created_at FROM blocks
+SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status, created_at FROM blocks
 WHERE chain_id = $1 AND block_number = $2
 LIMIT 1
 `
@@ -174,16 +172,14 @@ func (q *Queries) GetBlockByNumber(ctx context.Context, arg GetBlockByNumberPara
 		&i.BlockHash,
 		&i.ParentHash,
 		&i.BlockTimestamp,
-		&i.TxCount,
 		&i.Status,
-		&i.Metadata,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getLatestBlock = `-- name: GetLatestBlock :one
-SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, tx_count, status, metadata, created_at FROM blocks
+SELECT chain_id, block_number, block_hash, parent_hash, block_timestamp, status, created_at FROM blocks
 WHERE chain_id = $1
 ORDER BY block_number DESC
 LIMIT 1
@@ -198,9 +194,7 @@ func (q *Queries) GetLatestBlock(ctx context.Context, chainID string) (Block, er
 		&i.BlockHash,
 		&i.ParentHash,
 		&i.BlockTimestamp,
-		&i.TxCount,
 		&i.Status,
-		&i.Metadata,
 		&i.CreatedAt,
 	)
 	return i, err

@@ -14,9 +14,6 @@
 > The size and structure are intentional.
 > **Do not refactor or simplify unless absolutely necessary.**
 
-Production-ready RPC infrastructure for multi-chain blockchain indexers.
-
----
 
 ## Architecture
 

@@ -17,7 +17,6 @@ CREATE TABLE cursors (
     block_number BIGINT NOT NULL DEFAULT 0,
     block_hash VARCHAR(128) NOT NULL DEFAULT '',
     state VARCHAR(32) NOT NULL DEFAULT 'scanning', -- scanning, backfill, reorg, paused
-    metadata JSONB,
     created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
     updated_at BIGINT DEFAULT (extract(epoch from now())::bigint)
 );
@@ -31,9 +30,7 @@ CREATE TABLE blocks (
     block_hash VARCHAR(128) NOT NULL,
     parent_hash VARCHAR(128) NOT NULL,
     block_timestamp BIGINT NOT NULL,
-    tx_count INT NOT NULL DEFAULT 0,
     status VARCHAR(32) NOT NULL DEFAULT 'finalized', -- pending, finalized, orphaned
-    metadata JSONB,
     created_at BIGINT DEFAULT (extract(epoch from now())::bigint),
 
     PRIMARY KEY (chain_id, block_number)
@@ -44,6 +41,9 @@ ON blocks(chain_id, block_hash);
 
 CREATE INDEX idx_blocks_timestamp
 ON blocks(chain_id, block_timestamp);
+
+CREATE INDEX idx_blocks_chain_parent
+ON blocks(chain_id, parent_hash);
 
 --------------------------------------------------
 -- Transactions
@@ -67,7 +67,6 @@ CREATE TABLE transactions (
     PRIMARY KEY (chain_id, tx_hash, block_number)
 );
 
--- 🔧 CHANGED: index đúng pattern query
 CREATE INDEX idx_transactions_chain_block
 ON transactions(chain_id, block_number);
 
@@ -76,6 +75,9 @@ ON transactions(chain_id, from_address);
 
 CREATE INDEX idx_transactions_chain_to
 ON transactions(chain_id, to_address);
+
+CREATE INDEX idx_transactions_chain_status_time
+ON transactions(chain_id, status, block_timestamp);
 
 --------------------------------------------------
 -- Missing Blocks Queue
@@ -127,6 +129,9 @@ CREATE TABLE wallet_addresses (
 
 CREATE UNIQUE INDEX uq_wallet_addresses_unique
 ON wallet_addresses(address, network_type);
+
+CREATE INDEX idx_wallet_addresses_network
+ON wallet_addresses(network_type);
 
 -- +goose StatementEnd
 

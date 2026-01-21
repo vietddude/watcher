@@ -24,8 +24,8 @@ func (q *Queries) CountPendingMissingBlocks(ctx context.Context, chainID string)
 }
 
 const createMissingBlock = `-- name: CreateMissingBlock :exec
-INSERT INTO missing_blocks (chain_id, from_block, to_block, status, created_at, updated_at)
-VALUES ($1, $2, $3, $4, NOW(), NOW())
+INSERT INTO missing_blocks (chain_id, from_block, to_block, status)
+VALUES ($1, $2, $3, $4)
 `
 
 type CreateMissingBlockParams struct {
@@ -46,7 +46,7 @@ func (q *Queries) CreateMissingBlock(ctx context.Context, arg CreateMissingBlock
 }
 
 const getNextMissingBlock = `-- name: GetNextMissingBlock :one
-SELECT id, chain_id, from_block, to_block, status, created_at, updated_at
+SELECT id, chain_id, from_block, to_block, status
 FROM missing_blocks
 WHERE chain_id = $1 AND status = 'pending'
 ORDER BY from_block ASC
@@ -54,13 +54,11 @@ LIMIT 1
 `
 
 type GetNextMissingBlockRow struct {
-	ID        int32         `db:"id" json:"id"`
-	ChainID   string        `db:"chain_id" json:"chain_id"`
-	FromBlock int64         `db:"from_block" json:"from_block"`
-	ToBlock   int64         `db:"to_block" json:"to_block"`
-	Status    string        `db:"status" json:"status"`
-	CreatedAt sql.NullInt64 `db:"created_at" json:"created_at"`
-	UpdatedAt sql.NullInt64 `db:"updated_at" json:"updated_at"`
+	ID        int32  `db:"id" json:"id"`
+	ChainID   string `db:"chain_id" json:"chain_id"`
+	FromBlock int64  `db:"from_block" json:"from_block"`
+	ToBlock   int64  `db:"to_block" json:"to_block"`
+	Status    string `db:"status" json:"status"`
 }
 
 func (q *Queries) GetNextMissingBlock(ctx context.Context, chainID string) (GetNextMissingBlockRow, error) {
@@ -72,8 +70,6 @@ func (q *Queries) GetNextMissingBlock(ctx context.Context, chainID string) (GetN
 		&i.FromBlock,
 		&i.ToBlock,
 		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -124,7 +120,7 @@ func (q *Queries) GetPendingMissingBlocks(ctx context.Context, chainID string) (
 }
 
 const markMissingBlockCompleted = `-- name: MarkMissingBlockCompleted :exec
-UPDATE missing_blocks SET status = 'completed', updated_at = NOW() WHERE id = $1
+UPDATE missing_blocks SET status = 'completed', updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $1
 `
 
 func (q *Queries) MarkMissingBlockCompleted(ctx context.Context, id int32) error {
@@ -133,7 +129,7 @@ func (q *Queries) MarkMissingBlockCompleted(ctx context.Context, id int32) error
 }
 
 const markMissingBlockFailed = `-- name: MarkMissingBlockFailed :exec
-UPDATE missing_blocks SET status = 'failed', error_msg = $2, updated_at = NOW() WHERE id = $1
+UPDATE missing_blocks SET status = 'failed', error_msg = $2, updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $1
 `
 
 type MarkMissingBlockFailedParams struct {
@@ -147,7 +143,7 @@ func (q *Queries) MarkMissingBlockFailed(ctx context.Context, arg MarkMissingBlo
 }
 
 const markMissingBlockProcessing = `-- name: MarkMissingBlockProcessing :exec
-UPDATE missing_blocks SET status = 'processing', updated_at = NOW() WHERE id = $1
+UPDATE missing_blocks SET status = 'processing', updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id = $1
 `
 
 func (q *Queries) MarkMissingBlockProcessing(ctx context.Context, id int32) error {

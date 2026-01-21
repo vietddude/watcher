@@ -1,30 +1,51 @@
 package domain
 
+import "fmt"
+
 type ChainID string
-type ChainName string
+
+func (c ChainID) String() string {
+	return string(c)
+}
 
 const (
 	// Chain IDs
-	ChainIDEthereum ChainID = "1"
-	ChainIDPolygon  ChainID = "137"
-	ChainIDSuiTest  ChainID = "784"
-
-	// Chain Names (Internal Codes)
-	ChainNameEthereum ChainName = "ETHEREUM_MAINNET"
-	ChainNamePolygon  ChainName = "POLYGON_MAINNET"
-	ChainNameSuiTest  ChainName = "SUI_TEST"
+	EthereumMainnet ChainID = "1"
+	PolygonMainnet  ChainID = "137"
+	SuiTestnet      ChainID = "784"
 )
 
-// ChainIDToName maps ChainID to its human-readable InternalCode/Name.
-var ChainIDToName = map[ChainID]ChainName{
-	ChainIDEthereum: ChainNameEthereum,
-	ChainIDPolygon:  ChainNamePolygon,
-	ChainIDSuiTest:  ChainNameSuiTest,
+const (
+	// Internal Chain Codes
+	EthereumCode = "ETHEREUM_MAINNET"
+	PolygonCode  = "POLYGON_MAINNET"
+	SuiTestCode  = "SUI_TEST"
+)
+
+var chainIDToCode = map[ChainID]string{
+	EthereumMainnet: EthereumCode,
+	PolygonMainnet:  PolygonCode,
+	SuiTestnet:      SuiTestCode,
 }
 
-// ChainNameToID maps Chain Name to its ID.
-var ChainNameToID = map[ChainName]ChainID{
-	ChainNameEthereum: ChainIDEthereum,
-	ChainNamePolygon:  ChainIDPolygon,
-	ChainNameSuiTest:  ChainIDSuiTest,
+var chainCodeToID = map[string]ChainID{
+	EthereumCode: EthereumMainnet,
+	PolygonCode:  PolygonMainnet,
+	SuiTestCode:  SuiTestnet,
+}
+
+func ChainNameFromID(id ChainID) (string, error) {
+	code, ok := chainIDToCode[id]
+	if !ok {
+		return "", fmt.Errorf("unknown chain id: %s", id)
+	}
+	return code, nil
+}
+
+func ChainIDFromCode(code string) (ChainID, error) {
+	id, ok := chainCodeToID[code]
+	if !ok {
+		return "", fmt.Errorf("unknown chain code: %s", code)
+	}
+	return id, nil
 }

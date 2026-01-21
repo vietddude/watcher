@@ -7,34 +7,24 @@ package sqlc
 
 import (
 	"context"
-	"database/sql"
 )
 
 const createWalletAddress = `-- name: CreateWalletAddress :exec
-INSERT INTO wallet_addresses (address, network_type, standard, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (address) DO UPDATE SET
-    network_type = EXCLUDED.network_type,
-    standard = EXCLUDED.standard,
-    updated_at = $5
+INSERT INTO wallet_addresses (address, network_type, standard)
+VALUES ($1, $2, $3)
+ON CONFLICT (address, network_type) DO UPDATE
+SET
+    standard = EXCLUDED.standard
 `
 
 type CreateWalletAddressParams struct {
-	Address     string        `db:"address" json:"address"`
-	NetworkType string        `db:"network_type" json:"network_type"`
-	Standard    string        `db:"standard" json:"standard"`
-	CreatedAt   sql.NullInt64 `db:"created_at" json:"created_at"`
-	UpdatedAt   sql.NullInt64 `db:"updated_at" json:"updated_at"`
+	Address     string `db:"address" json:"address"`
+	NetworkType string `db:"network_type" json:"network_type"`
+	Standard    string `db:"standard" json:"standard"`
 }
 
 func (q *Queries) CreateWalletAddress(ctx context.Context, arg CreateWalletAddressParams) error {
-	_, err := q.db.ExecContext(ctx, createWalletAddress,
-		arg.Address,
-		arg.NetworkType,
-		arg.Standard,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
+	_, err := q.db.ExecContext(ctx, createWalletAddress, arg.Address, arg.NetworkType, arg.Standard)
 	return err
 }
 

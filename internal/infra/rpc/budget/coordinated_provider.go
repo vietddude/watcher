@@ -43,7 +43,7 @@ func (p *CoordinatedProvider) Call(ctx context.Context, method string, params []
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	chainName, _ := domain.ChainNameFromID(p.chainID)
 	metrics.RPCCallsTotal.WithLabelValues(chainName, providerName, method).Inc()
 	metrics.RPCLatency.WithLabelValues(chainName, providerName, method).Observe(duration)
 
@@ -76,7 +76,7 @@ func (p *CoordinatedProvider) BatchCall(
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	chainName, _ := domain.ChainNameFromID(p.chainID)
 	metrics.RPCCallsTotal.WithLabelValues(chainName, providerName, "batch").
 		Add(float64(len(requests)))
 	metrics.RPCLatency.WithLabelValues(chainName, providerName, "batch").Observe(duration)
@@ -90,7 +90,7 @@ func (p *CoordinatedProvider) BatchCall(
 
 // GetName returns a generic name as it represents multiple providers.
 func (p *CoordinatedProvider) GetName() string {
-	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	chainName, _ := domain.ChainNameFromID(p.chainID)
 	return "coordinated-provider-" + chainName
 }
 
@@ -156,7 +156,7 @@ func (p *CoordinatedProvider) Execute(ctx context.Context, op provider.Operation
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	chainName, _ := domain.ChainNameFromID(p.chainID)
 	metrics.RPCCallsTotal.WithLabelValues(chainName, providerName, opName).Inc()
 	metrics.RPCLatency.WithLabelValues(chainName, providerName, opName).Observe(duration)
 

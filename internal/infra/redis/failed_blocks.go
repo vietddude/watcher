@@ -60,7 +60,7 @@ func (r *FailedBlockRepo) Add(ctx context.Context, fb *domain.FailedBlock) error
 // GetNext retrieves the next failed block to retry.
 func (r *FailedBlockRepo) GetNext(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) (*domain.FailedBlock, error) {
 	// Get the first member (lowest retry count)
 	results, err := r.rdb.ZRange(ctx, r.queueKey(), 0, 0).Result()
@@ -149,7 +149,7 @@ func (r *FailedBlockRepo) MarkResolved(ctx context.Context, id string) error {
 // GetAll retrieves all failed blocks.
 func (r *FailedBlockRepo) GetAll(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) ([]*domain.FailedBlock, error) {
 	// Get all IDs
 	ids, err := r.rdb.ZRange(ctx, r.queueKey(), 0, -1).Result()
@@ -178,7 +178,7 @@ func (r *FailedBlockRepo) GetAll(
 }
 
 // Count returns the count of failed blocks.
-func (r *FailedBlockRepo) Count(ctx context.Context, chainID string) (int, error) {
+func (r *FailedBlockRepo) Count(ctx context.Context, chainID domain.ChainID) (int, error) {
 	count, err := r.rdb.ZCard(ctx, r.queueKey()).Result()
 	if err != nil {
 		return 0, fmt.Errorf("zcard failed: %w", err)

@@ -11,25 +11,22 @@ import (
 )
 
 type Block struct {
-	ChainID        string                `db:"chain_id" json:"chain_id"`
-	BlockNumber    int64                 `db:"block_number" json:"block_number"`
-	BlockHash      string                `db:"block_hash" json:"block_hash"`
-	ParentHash     string                `db:"parent_hash" json:"parent_hash"`
-	BlockTimestamp int64                 `db:"block_timestamp" json:"block_timestamp"`
-	TxCount        int32                 `db:"tx_count" json:"tx_count"`
-	Status         string                `db:"status" json:"status"`
-	Metadata       pqtype.NullRawMessage `db:"metadata" json:"metadata"`
-	CreatedAt      sql.NullInt64         `db:"created_at" json:"created_at"`
+	ChainID        string        `db:"chain_id" json:"chain_id"`
+	BlockNumber    int64         `db:"block_number" json:"block_number"`
+	BlockHash      string        `db:"block_hash" json:"block_hash"`
+	ParentHash     string        `db:"parent_hash" json:"parent_hash"`
+	BlockTimestamp int64         `db:"block_timestamp" json:"block_timestamp"`
+	Status         string        `db:"status" json:"status"`
+	CreatedAt      sql.NullInt64 `db:"created_at" json:"created_at"`
 }
 
 type Cursor struct {
-	ChainID     string                `db:"chain_id" json:"chain_id"`
-	BlockNumber int64                 `db:"block_number" json:"block_number"`
-	BlockHash   string                `db:"block_hash" json:"block_hash"`
-	State       string                `db:"state" json:"state"`
-	Metadata    pqtype.NullRawMessage `db:"metadata" json:"metadata"`
-	CreatedAt   sql.NullInt64         `db:"created_at" json:"created_at"`
-	UpdatedAt   sql.NullInt64         `db:"updated_at" json:"updated_at"`
+	ChainID     string        `db:"chain_id" json:"chain_id"`
+	BlockNumber int64         `db:"block_number" json:"block_number"`
+	BlockHash   string        `db:"block_hash" json:"block_hash"`
+	State       string        `db:"state" json:"state"`
+	CreatedAt   sql.NullInt64 `db:"created_at" json:"created_at"`
+	UpdatedAt   sql.NullInt64 `db:"updated_at" json:"updated_at"`
 }
 
 type FailedBlock struct {

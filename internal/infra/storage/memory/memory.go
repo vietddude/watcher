@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	// Added for atomic ops if needed
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -29,10 +28,6 @@ func NewMemoryStorage() *MemoryStorage {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// Block Repository
-// -----------------------------------------------------------------------------
-
 type BlockRepo struct {
 	store *MemoryStorage
 }
@@ -44,7 +39,7 @@ func NewBlockRepo(store *MemoryStorage) *BlockRepo {
 func (r *BlockRepo) Save(ctx context.Context, block *domain.Block) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
-	key := block.ChainID + block.Hash
+	key := string(block.ChainID) + block.Hash
 	r.store.blocks[key] = block
 	return nil
 }
@@ -53,7 +48,7 @@ func (r *BlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	for _, b := range blocks {
-		key := b.ChainID + b.Hash
+		key := string(b.ChainID) + b.Hash
 		r.store.blocks[key] = b
 	}
 	return nil
@@ -61,7 +56,7 @@ func (r *BlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error
 
 func (r *BlockRepo) GetByNumber(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 ) (*domain.Block, error) {
 	r.store.mu.RLock()
@@ -76,16 +71,16 @@ func (r *BlockRepo) GetByNumber(
 
 func (r *BlockRepo) GetByHash(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	hash string,
 ) (*domain.Block, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
-	key := chainID + hash
+	key := string(chainID) + hash
 	return r.store.blocks[key], nil
 }
 
-func (r *BlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Block, error) {
+func (r *BlockRepo) GetLatest(ctx context.Context, chainID domain.ChainID) (*domain.Block, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
 	var max *domain.Block
@@ -101,7 +96,7 @@ func (r *BlockRepo) GetLatest(ctx context.Context, chainID string) (*domain.Bloc
 
 func (r *BlockRepo) UpdateStatus(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 	status domain.BlockStatus,
 ) error {
@@ -118,13 +113,17 @@ func (r *BlockRepo) UpdateStatus(
 
 func (r *BlockRepo) FindGaps(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	from, to uint64,
 ) ([]storage.Gap, error) {
 	return nil, nil // TODO: Implement gap finding
 }
 
-func (r *BlockRepo) DeleteRange(ctx context.Context, chainID string, from, to uint64) error {
+func (r *BlockRepo) DeleteRange(
+	ctx context.Context,
+	chainID domain.ChainID,
+	from, to uint64,
+) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	for k, b := range r.store.blocks {
@@ -137,7 +136,7 @@ func (r *BlockRepo) DeleteRange(ctx context.Context, chainID string, from, to ui
 
 func (r *BlockRepo) DeleteBlocksOlderThan(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	timestamp uint64,
 ) error {
 	r.store.mu.Lock()
@@ -153,10 +152,6 @@ func (r *BlockRepo) DeleteBlocksOlderThan(
 	return nil
 }
 
-// -----------------------------------------------------------------------------
-// Transaction Repository
-// -----------------------------------------------------------------------------
-
 type TxRepo struct {
 	store *MemoryStorage
 }
@@ -168,7 +163,7 @@ func NewTxRepo(store *MemoryStorage) *TxRepo {
 func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
-	key := tx.ChainID + tx.TxHash
+	key := string(tx.ChainID) + tx.Hash
 	r.store.txs[key] = tx
 	return nil
 }
@@ -177,7 +172,7 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	for _, tx := range txs {
-		key := tx.ChainID + tx.TxHash
+		key := string(tx.ChainID) + tx.Hash
 		r.store.txs[key] = tx
 	}
 	return nil
@@ -185,18 +180,18 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 
 func (r *TxRepo) GetByHash(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	hash string,
 ) (*domain.Transaction, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
-	key := chainID + hash
+	key := string(chainID) + hash
 	return r.store.txs[key], nil
 }
 
 func (r *TxRepo) GetByBlock(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 ) ([]*domain.Transaction, error) {
 	r.store.mu.RLock()
@@ -212,7 +207,7 @@ func (r *TxRepo) GetByBlock(
 
 func (r *TxRepo) UpdateStatus(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	hash string,
 	status domain.TxStatus,
 ) error {
@@ -227,7 +222,7 @@ func (r *TxRepo) UpdateStatus(
 	return nil
 }
 
-func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, num uint64) error {
+func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID domain.ChainID, num uint64) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
 	for k, tx := range r.store.txs {
@@ -240,7 +235,7 @@ func (r *TxRepo) DeleteByBlock(ctx context.Context, chainID string, num uint64) 
 
 func (r *TxRepo) DeleteTransactionsOlderThan(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	timestamp uint64,
 ) error {
 	r.store.mu.Lock()
@@ -253,10 +248,6 @@ func (r *TxRepo) DeleteTransactionsOlderThan(
 	return nil
 }
 
-// -----------------------------------------------------------------------------
-// Cursor Repository
-// -----------------------------------------------------------------------------
-
 type CursorRepo struct {
 	store *MemoryStorage
 }
@@ -265,13 +256,12 @@ func NewCursorRepo(store *MemoryStorage) *CursorRepo {
 	return &CursorRepo{store: store}
 }
 
-func (r *CursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, error) {
+func (r *CursorRepo) Get(ctx context.Context, chainID domain.ChainID) (*domain.Cursor, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
-	if c, ok := r.store.cursors[chainID]; ok {
+	if c, ok := r.store.cursors[string(chainID)]; ok {
 		// Return copy
 		copy := *c
-		copy.Metadata = make(map[string]any) // Deep copy metadata if needed
 		return &copy, nil
 	}
 	return nil, storage.ErrCursorNotFound
@@ -280,21 +270,21 @@ func (r *CursorRepo) Get(ctx context.Context, chainID string) (*domain.Cursor, e
 func (r *CursorRepo) Save(ctx context.Context, cursor *domain.Cursor) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
-	r.store.cursors[cursor.ChainID] = cursor
+	r.store.cursors[string(cursor.ChainID)] = cursor
 	return nil
 }
 
 func (r *CursorRepo) UpdateBlock(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	num uint64,
 	hash string,
 ) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
-	if c, ok := r.store.cursors[chainID]; ok {
-		c.CurrentBlock = num
-		c.CurrentBlockHash = hash
+	if c, ok := r.store.cursors[string(chainID)]; ok {
+		c.BlockNumber = num
+		c.BlockHash = hash
 		return nil
 	}
 	return fmt.Errorf("cursor not found")
@@ -302,25 +292,26 @@ func (r *CursorRepo) UpdateBlock(
 
 func (r *CursorRepo) UpdateState(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	state domain.CursorState,
 ) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()
-	if c, ok := r.store.cursors[chainID]; ok {
+	if c, ok := r.store.cursors[string(chainID)]; ok {
 		c.State = state
 		return nil
 	}
 	return fmt.Errorf("cursor not found")
 }
 
-func (r *CursorRepo) Rollback(ctx context.Context, chainID string, num uint64, hash string) error {
+func (r *CursorRepo) Rollback(
+	ctx context.Context,
+	chainID domain.ChainID,
+	num uint64,
+	hash string,
+) error {
 	return r.UpdateBlock(ctx, chainID, num, hash)
 }
-
-// -----------------------------------------------------------------------------
-// Missing Block Repository (Minimal)
-// -----------------------------------------------------------------------------
 
 type MissingRepo struct{ store *MemoryStorage }
 
@@ -330,20 +321,20 @@ func NewMissingRepo(
 	return &MissingRepo{store: s}
 }
 func (r *MissingRepo) Add(ctx context.Context, m *domain.MissingBlock) error { return nil }
-func (r *MissingRepo) GetNext(ctx context.Context, c string) (*domain.MissingBlock, error) {
+func (r *MissingRepo) GetNext(ctx context.Context, c domain.ChainID) (*domain.MissingBlock, error) {
 	return nil, nil
 }
 func (r *MissingRepo) MarkProcessing(ctx context.Context, id string) error  { return nil }
 func (r *MissingRepo) MarkCompleted(ctx context.Context, id string) error   { return nil }
 func (r *MissingRepo) MarkFailed(ctx context.Context, id, msg string) error { return nil }
-func (r *MissingRepo) GetPending(ctx context.Context, c string) ([]*domain.MissingBlock, error) {
+
+func (r *MissingRepo) GetPending(
+	ctx context.Context,
+	c domain.ChainID,
+) ([]*domain.MissingBlock, error) {
 	return nil, nil
 }
-func (r *MissingRepo) Count(ctx context.Context, c string) (int, error) { return 0, nil }
-
-// -----------------------------------------------------------------------------
-// Failed Block Repository (Minimal)
-// -----------------------------------------------------------------------------
+func (r *MissingRepo) Count(ctx context.Context, c domain.ChainID) (int, error) { return 0, nil }
 
 type FailedRepo struct{ store *MemoryStorage }
 
@@ -353,12 +344,12 @@ func NewFailedRepo(
 	return &FailedRepo{store: s}
 }
 func (r *FailedRepo) Add(ctx context.Context, f *domain.FailedBlock) error { return nil }
-func (r *FailedRepo) GetNext(ctx context.Context, c string) (*domain.FailedBlock, error) {
+func (r *FailedRepo) GetNext(ctx context.Context, c domain.ChainID) (*domain.FailedBlock, error) {
 	return nil, nil
 }
 func (r *FailedRepo) IncrementRetry(ctx context.Context, id string) error { return nil }
 func (r *FailedRepo) MarkResolved(ctx context.Context, id string) error   { return nil }
-func (r *FailedRepo) GetAll(ctx context.Context, c string) ([]*domain.FailedBlock, error) {
+func (r *FailedRepo) GetAll(ctx context.Context, c domain.ChainID) ([]*domain.FailedBlock, error) {
 	return nil, nil
 }
-func (r *FailedRepo) Count(ctx context.Context, c string) (int, error) { return 0, nil }
+func (r *FailedRepo) Count(ctx context.Context, c domain.ChainID) (int, error) { return 0, nil }

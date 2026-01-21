@@ -412,7 +412,7 @@ func (c *Coordinator) GetBudget() BudgetTracker {
 // Call this periodically (e.g., every 10 seconds) from a background goroutine.
 func (c *Coordinator) UpdateMetrics(chainID domain.ChainID) {
 	providers := c.router.GetAllProviders(chainID)
-	chainName, _ := domain.ChainCodeFromID(chainID)
+	chainName, _ := domain.ChainNameFromID(chainID)
 	for _, p := range providers {
 		// 1. Update Budget Metrics (Universal)
 		// This comes from the budget tracker and is available for all providers (HTTP, GRPC, etc.)

@@ -28,7 +28,7 @@ func (r *FailedBlockRepo) Add(ctx context.Context, fb *domain.FailedBlock) error
 	}
 
 	err := r.db.Queries.CreateFailedBlock(ctx, sqlc.CreateFailedBlockParams{
-		ChainID:     fb.ChainID,
+		ChainID:     string(fb.ChainID),
 		BlockNumber: int64(fb.BlockNumber),
 		ErrorMsg:    sql.NullString{String: fb.Error, Valid: fb.Error != ""},
 		RetryCount:  int32(fb.RetryCount),
@@ -45,9 +45,9 @@ func (r *FailedBlockRepo) Add(ctx context.Context, fb *domain.FailedBlock) error
 // GetNext returns the next failed block to retry.
 func (r *FailedBlockRepo) GetNext(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) (*domain.FailedBlock, error) {
-	row, err := r.db.Queries.GetNextFailedBlock(ctx, chainID)
+	row, err := r.db.Queries.GetNextFailedBlock(ctx, string(chainID))
 	if err == sql.ErrNoRows {
 		return nil, nil // No pending failed blocks
 	}
@@ -57,7 +57,7 @@ func (r *FailedBlockRepo) GetNext(
 
 	return &domain.FailedBlock{
 		ID:          fmt.Sprintf("%d", row.ID),
-		ChainID:     row.ChainID,
+		ChainID:     domain.ChainID(row.ChainID),
 		BlockNumber: uint64(row.BlockNumber),
 		Error:       row.ErrorMsg.String,
 		RetryCount:  int(row.RetryCount),
@@ -94,9 +94,9 @@ func (r *FailedBlockRepo) MarkResolved(ctx context.Context, id string) error {
 // GetAll returns all failed blocks (for debugging/monitoring).
 func (r *FailedBlockRepo) GetAll(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 ) ([]*domain.FailedBlock, error) {
-	rows, err := r.db.Queries.GetAllFailedBlocks(ctx, chainID)
+	rows, err := r.db.Queries.GetAllFailedBlocks(ctx, string(chainID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all failed blocks: %w", err)
 	}
@@ -105,7 +105,7 @@ func (r *FailedBlockRepo) GetAll(
 	for _, row := range rows {
 		blocks = append(blocks, &domain.FailedBlock{
 			ID:          fmt.Sprintf("%d", row.ID),
-			ChainID:     row.ChainID,
+			ChainID:     domain.ChainID(row.ChainID),
 			BlockNumber: uint64(row.BlockNumber),
 			Error:       row.ErrorMsg.String,
 			RetryCount:  int(row.RetryCount),
@@ -117,8 +117,8 @@ func (r *FailedBlockRepo) GetAll(
 }
 
 // Count returns the number of failed blocks.
-func (r *FailedBlockRepo) Count(ctx context.Context, chainID string) (int, error) {
-	count, err := r.db.Queries.CountFailedBlocks(ctx, chainID)
+func (r *FailedBlockRepo) Count(ctx context.Context, chainID domain.ChainID) (int, error) {
+	count, err := r.db.Queries.CountFailedBlocks(ctx, string(chainID))
 	if err != nil {
 		return 0, fmt.Errorf("failed to count failed blocks: %w", err)
 	}

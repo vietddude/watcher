@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
@@ -26,8 +25,6 @@ func (r *WalletRepo) Save(ctx context.Context, wallet *domain.WalletAddress) err
 		Address:     wallet.Address,
 		NetworkType: string(wallet.Type),
 		Standard:    string(wallet.Standard),
-		CreatedAt:   sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
-		UpdatedAt:   sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save wallet address: %w", err)
@@ -49,12 +46,9 @@ func (r *WalletRepo) GetByAddress(
 	}
 
 	return &domain.WalletAddress{
-		ID:        uint64(row.ID),
-		Address:   row.Address,
-		Type:      domain.NetworkType(row.NetworkType),
-		Standard:  domain.AddressStandard(row.Standard),
-		CreatedAt: uint64(row.CreatedAt.Int64),
-		UpdatedAt: uint64(row.UpdatedAt.Int64),
+		Address:  row.Address,
+		Type:     domain.NetworkType(row.NetworkType),
+		Standard: domain.AddressStandard(row.Standard),
 	}, nil
 }
 
@@ -68,12 +62,9 @@ func (r *WalletRepo) GetAll(ctx context.Context) ([]*domain.WalletAddress, error
 	var wallets []*domain.WalletAddress
 	for _, row := range rows {
 		wallets = append(wallets, &domain.WalletAddress{
-			ID:        uint64(row.ID),
-			Address:   row.Address,
-			Type:      domain.NetworkType(row.NetworkType),
-			Standard:  domain.AddressStandard(row.Standard),
-			CreatedAt: uint64(row.CreatedAt.Int64),
-			UpdatedAt: uint64(row.UpdatedAt.Int64),
+			Address:  row.Address,
+			Type:     domain.NetworkType(row.NetworkType),
+			Standard: domain.AddressStandard(row.Standard),
 		})
 	}
 	return wallets, nil

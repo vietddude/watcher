@@ -6,6 +6,7 @@ const (
 	TxStatusSuccess  TxStatus = "success"
 	TxStatusFailed   TxStatus = "failed"
 	TxStatusReverted TxStatus = "reverted"
+	TxStatusInvalid  TxStatus = "invalid"
 )
 
 // Transaction represents a blockchain transaction
