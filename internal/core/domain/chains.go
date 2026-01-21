@@ -19,7 +19,7 @@ const (
 	// Internal Chain Codes
 	EthereumCode = "ETHEREUM_MAINNET"
 	PolygonCode  = "POLYGON_MAINNET"
-	SuiTestCode  = "SUI_TEST"
+	SuiTestCode  = "SUI_TESTNET"
 )
 
 var chainIDToCode = map[ChainID]string{

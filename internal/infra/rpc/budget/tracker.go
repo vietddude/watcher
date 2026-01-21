@@ -2,6 +2,7 @@
 package budget
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -191,7 +192,9 @@ func (bt *DefaultBudgetTracker) GetThrottleDelay(providerName string) time.Durat
 	if budget.windowLimit > 0 && budget.windowDuration > 0 {
 		windowUsage := float64(budget.windowCalls) / float64(budget.windowLimit)
 		if windowUsage > 0.95 {
-			return time.Until(budget.windowStart.Add(budget.windowDuration))
+			delay := time.Until(budget.windowStart.Add(budget.windowDuration))
+			slog.Warn("Rate limit reached, throttling", "provider", providerName, "windowCalls", budget.windowCalls, "limit", budget.windowLimit, "delay", delay)
+			return delay
 		}
 		if windowUsage > 0.8 {
 			return 200 * time.Millisecond

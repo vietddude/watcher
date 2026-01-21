@@ -32,7 +32,7 @@ type Adapter struct {
 	prefetchLoading map[uint64]chan struct{} // channel to wait for ongoing fetches
 }
 
-const prefetchWindow = 20
+const prefetchWindow = 5
 
 // Ensure Adapter implements chain.Adapter
 var _ chain.Adapter = (*Adapter)(nil)
@@ -119,8 +119,14 @@ func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Blo
 	a.cachedCheckpoint = cp
 	a.mu.Unlock()
 
-	// 4. Trigger next prefetch window
-	go a.prefetch(blockNumber + 1)
+	// 4. Trigger next prefetch window if buffer is getting low
+	a.prefetchMu.Lock()
+	bufferedCount := len(a.prefetchBuffer)
+	a.prefetchMu.Unlock()
+
+	if bufferedCount < prefetchWindow/2 {
+		go a.prefetch(blockNumber + 1)
+	}
 
 	return a.mapCheckpointToBlock(cp)
 }
@@ -210,6 +216,9 @@ func (a *Adapter) prefetch(start uint64) {
 				a.prefetchMu.Unlock()
 			}
 		}(num, waitCh)
+
+		// More conservative delay to avoid hitting rate limits on public nodes
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 

@@ -11,12 +11,15 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Router handles provider selection and health tracking.
@@ -230,10 +233,24 @@ func (r *DefaultRouter) RecordFailure(providerName string, err error) {
 
 	metrics.failureCount++
 	metrics.lastFailureAt = time.Now()
-	metrics.consecutiveFails++
+
+	// Do not increment consecutive fails for "Not Found" errors (polling for new blocks)
+	isNotFound := false
+	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+		isNotFound = true
+	} else if strings.Contains(strings.ToLower(err.Error()), "not found") {
+		isNotFound = true
+	}
+
+	if !isNotFound {
+		metrics.consecutiveFails++
+	}
+
+	slog.Warn("Provider call failed", "provider", providerName, "consecutive", metrics.consecutiveFails, "error", err, "isNotFound", isNotFound)
 
 	if metrics.consecutiveFails >= 5 {
 		metrics.circuitOpen = true
+		slog.Error("Provider circuit opened", "provider", providerName, "consecutive", metrics.consecutiveFails)
 	}
 }
 

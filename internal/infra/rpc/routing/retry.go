@@ -9,6 +9,8 @@ import (
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // RetryConfig defines retry behavior.
@@ -50,6 +52,18 @@ func ClassifyError(err error) ErrorAction {
 	if strings.Contains(s, "-32700") || strings.Contains(s, "-32600") ||
 		strings.Contains(s, "-32601") || strings.Contains(s, "-32602") {
 		return ActionFatal
+	}
+
+	// Check gRPC status codes if applicable
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.InvalidArgument, codes.Unimplemented:
+			return ActionFatal
+		case codes.ResourceExhausted, codes.PermissionDenied, codes.Unauthenticated:
+			return ActionFailover
+		case codes.Unavailable, codes.DeadlineExceeded:
+			return ActionRetry
+		}
 	}
 
 	// Failover (Provider specific issues)
