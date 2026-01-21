@@ -12,14 +12,14 @@ import (
 )
 
 type BitcoinAdapter struct {
-	chainID        string
+	chainID        domain.ChainID
 	client         rpc.RPCClient
 	finalityBlocks uint64
 	log            logger.Logger
 }
 
 func NewBitcoinAdapter(
-	chainID string,
+	chainID domain.ChainID,
 	client rpc.RPCClient,
 	finalityBlocks uint64,
 ) *BitcoinAdapter {
@@ -96,10 +96,6 @@ func (a *BitcoinAdapter) GetTransactions(
 	ctx context.Context,
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
-	if block.TxCount == 0 {
-		return []*domain.Transaction{}, nil
-	}
-
 	// Get block with full transaction details (verbosity 2)
 	op := rpc.NewJSONRPC10Operation("getblock", block.Hash, 2)
 	result, err := a.client.Execute(ctx, op)
@@ -182,7 +178,7 @@ func (a *BitcoinAdapter) GetFinalityDepth() uint64 {
 	return a.finalityBlocks
 }
 
-func (a *BitcoinAdapter) GetChainID() string {
+func (a *BitcoinAdapter) GetChainID() domain.ChainID {
 	return a.chainID
 }
 
@@ -213,12 +209,7 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]any) (*domain.Block, er
 		return nil, fmt.Errorf("invalid timestamp")
 	}
 
-	txCount := 0
-	if txs, ok := blockData["tx"].([]any); ok {
-		txCount = len(txs)
-	} else if nTx, ok := blockData["nTx"].(float64); ok {
-		txCount = int(nTx)
-	}
+	// txCount calculation removed as unused
 
 	return &domain.Block{
 		ChainID:    a.chainID,
@@ -226,13 +217,7 @@ func (a *BitcoinAdapter) parseBlock(blockData map[string]any) (*domain.Block, er
 		Hash:       hash,
 		ParentHash: previousBlockHash,
 		Timestamp:  uint64(timestamp),
-		TxCount:    txCount,
 		Status:     domain.BlockStatusPending,
-		Metadata: map[string]any{
-			"difficulty": blockData["difficulty"],
-			"size":       blockData["size"],
-			"weight":     blockData["weight"],
-		},
 	}, nil
 }
 
@@ -282,8 +267,8 @@ func (a *BitcoinAdapter) parseUTXOTransaction(
 			ChainID:     a.chainID,
 			BlockNumber: block.Number,
 			BlockHash:   block.Hash,
-			TxHash:      txHash,
-			TxIndex:     txIndex,
+			Hash:        txHash,
+			Index:       txIndex,
 			From:        "", // Outputs-only approach: skip input resolution
 			To:          toAddr,
 			Value:       value,

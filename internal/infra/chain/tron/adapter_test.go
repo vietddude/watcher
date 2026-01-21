@@ -95,9 +95,6 @@ func TestTronAdapter_GetBlock(t *testing.T) {
 	if block.Hash != "0000000003abc123" {
 		t.Errorf("unexpected block hash: %s", block.Hash)
 	}
-	if block.TxCount != 2 {
-		t.Errorf("expected tx count 2, got %d", block.TxCount)
-	}
 }
 
 func TestTronAdapter_ParseTransaction_TransferContract(t *testing.T) {
@@ -135,8 +132,8 @@ func TestTronAdapter_ParseTransaction_TransferContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tx.TxHash != "abc123txid" {
-		t.Errorf("expected txID=abc123txid, got %s", tx.TxHash)
+	if tx.Hash != "abc123txid" {
+		t.Errorf("expected txID=abc123txid, got %s", tx.Hash)
 	}
 	if tx.From != "TFromAddress" {
 		t.Errorf("expected from=TFromAddress, got %s", tx.From)
@@ -156,9 +153,9 @@ func TestTronAdapter_FilterTransactions(t *testing.T) {
 	adapter := NewTronAdapter("tron", nil, 19)
 
 	txs := []*domain.Transaction{
-		{TxHash: "tx1", From: "TWatched", To: "TRandom"},
-		{TxHash: "tx2", From: "TRandom", To: "TRandom2"},
-		{TxHash: "tx3", From: "TRandom3", To: "TWatched"},
+		{Hash: "tx1", From: "TWatched", To: "TRandom"},
+		{Hash: "tx2", From: "TRandom", To: "TRandom2"},
+		{Hash: "tx3", From: "TRandom3", To: "TWatched"},
 	}
 
 	watchedAddresses := []string{"TWatched"}

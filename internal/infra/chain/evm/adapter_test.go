@@ -76,9 +76,6 @@ func TestEVMAdapter_GetBlock(t *testing.T) {
 	if block.Hash != "0xabc123" {
 		t.Errorf("unexpected block hash: %s", block.Hash)
 	}
-	if block.TxCount != 3 {
-		t.Errorf("expected tx count 3, got %d", block.TxCount)
-	}
 }
 
 func TestEVMAdapter_GetTransactions(t *testing.T) {
@@ -118,7 +115,6 @@ func TestEVMAdapter_GetTransactions(t *testing.T) {
 		Number:    1234567,
 		Hash:      "0xabc123",
 		Timestamp: 1700000000,
-		TxCount:   2,
 	}
 
 	txs, err := adapter.GetTransactions(context.Background(), block)
@@ -141,10 +137,10 @@ func TestEVMAdapter_FilterTransactions(t *testing.T) {
 	adapter := NewEVMAdapter("ethereum", nil, 12)
 
 	txs := []*domain.Transaction{
-		{TxHash: "tx1", From: "0xalice", To: "0xbob"},
-		{TxHash: "tx2", From: "0xcharlie", To: "0xdave"},
-		{TxHash: "tx3", From: "0xbob", To: "0xeve"},
-		{TxHash: "tx4", From: "0xfrank", To: "0xalice"},
+		{Hash: "tx1", From: "0xalice", To: "0xbob"},
+		{Hash: "tx2", From: "0xcharlie", To: "0xdave"},
+		{Hash: "tx3", From: "0xbob", To: "0xeve"},
+		{Hash: "tx4", From: "0xfrank", To: "0xalice"},
 	}
 
 	addresses := []string{"0xalice", "0xbob"}

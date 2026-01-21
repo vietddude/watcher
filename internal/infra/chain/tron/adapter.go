@@ -17,7 +17,7 @@ import (
 // Tron uses HTTP API (not JSON-RPC), so we adapt the calls accordingly.
 // API docs: https://developers.tron.network/reference
 type TronAdapter struct {
-	chainID        string
+	chainID        domain.ChainID
 	client         rpc.RPCClient
 	bloomFilter    *filter.BloomFilter
 	finalityBlocks uint64
@@ -27,7 +27,11 @@ type TronAdapter struct {
 // NewTronAdapter creates a new Tron adapter.
 // Note: Tron uses HTTP endpoints like /wallet/getnowblock, /wallet/getblockbynum
 // The rpcProvider should be configured to call Tron's HTTP API.
-func NewTronAdapter(chainID string, client rpc.RPCClient, finalityBlocks uint64) *TronAdapter {
+func NewTronAdapter(
+	chainID domain.ChainID,
+	client rpc.RPCClient,
+	finalityBlocks uint64,
+) *TronAdapter {
 	return &TronAdapter{
 		chainID:        chainID,
 		client:         client,
@@ -109,10 +113,6 @@ func (a *TronAdapter) GetTransactions(
 	ctx context.Context,
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
-	if block.TxCount == 0 {
-		return []*domain.Transaction{}, nil
-	}
-
 	// Get full block data with transactions
 	op := rpc.NewRESTOperation("wallet/getblockbynum", "POST", map[string]any{"num": block.Number})
 	result, err := a.client.Execute(ctx, op)
@@ -209,7 +209,7 @@ func (a *TronAdapter) GetFinalityDepth() uint64 {
 }
 
 // GetChainID returns the chain identifier.
-func (a *TronAdapter) GetChainID() string {
+func (a *TronAdapter) GetChainID() domain.ChainID {
 	return a.chainID
 }
 
@@ -225,7 +225,7 @@ func (a *TronAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transact
 	op := rpc.NewRESTOperation(
 		"wallet/gettransactioninfobyid",
 		"POST",
-		map[string]any{"value": tx.TxHash},
+		map[string]any{"value": tx.Hash},
 	)
 	result, err := a.client.Execute(ctx, op)
 	if err != nil {
@@ -322,11 +322,7 @@ func (a *TronAdapter) parseBlock(blockData map[string]any) (*domain.Block, error
 		return nil, fmt.Errorf("invalid timestamp")
 	}
 
-	// Count transactions
-	txCount := 0
-	if txs, ok := blockData["transactions"].([]any); ok {
-		txCount = len(txs)
-	}
+	// txCount calculation removed as unused
 
 	return &domain.Block{
 		ChainID:    a.chainID,
@@ -334,11 +330,7 @@ func (a *TronAdapter) parseBlock(blockData map[string]any) (*domain.Block, error
 		Hash:       blockID,
 		ParentHash: parentHash,
 		Timestamp:  uint64(timestamp) / 1000,
-		TxCount:    txCount,
 		Status:     domain.BlockStatusPending,
-		Metadata: map[string]any{
-			"witness_address": rawData["witness_address"],
-		},
 	}, nil
 }
 
@@ -380,8 +372,8 @@ func (a *TronAdapter) parseTransaction(
 		ChainID:     a.chainID,
 		BlockNumber: block.Number,
 		BlockHash:   block.Hash,
-		TxHash:      txID,
-		TxIndex:     txIndex,
+		Hash:        txID,
+		Index:       txIndex,
 		From:        from,
 		To:          to,
 		Value:       value,

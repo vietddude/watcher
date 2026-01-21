@@ -14,7 +14,7 @@ import (
 )
 
 type EVMAdapter struct {
-	chainID        string
+	chainID        domain.ChainID
 	client         rpc.RPCClient
 	finalityBlocks uint64
 
@@ -24,7 +24,11 @@ type EVMAdapter struct {
 	lastAddressHash uint64
 }
 
-func NewEVMAdapter(chainID string, client rpc.RPCClient, finalityBlocks uint64) *EVMAdapter {
+func NewEVMAdapter(
+	chainID domain.ChainID,
+	client rpc.RPCClient,
+	finalityBlocks uint64,
+) *EVMAdapter {
 	return &EVMAdapter{
 		chainID:        chainID,
 		client:         client,
@@ -91,10 +95,6 @@ func (a *EVMAdapter) GetTransactions(
 	ctx context.Context,
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
-	if block.TxCount == 0 {
-		return nil, nil
-	}
-
 	blockHex := fmt.Sprintf("0x%x", block.Number)
 	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
 
@@ -180,7 +180,7 @@ func (a *EVMAdapter) ensureAddressIndex(addresses []string) {
 }
 
 func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
-	op := rpc.NewHTTPOperation("eth_getTransactionReceipt", []any{tx.TxHash})
+	op := rpc.NewHTTPOperation("eth_getTransactionReceipt", []any{tx.Hash})
 	result, err := a.client.Execute(ctx, op)
 	if err != nil || result == nil {
 		return err
@@ -214,7 +214,7 @@ func (a *EVMAdapter) VerifyBlockHash(
 }
 
 func (a *EVMAdapter) GetFinalityDepth() uint64  { return a.finalityBlocks }
-func (a *EVMAdapter) GetChainID() string        { return a.chainID }
+func (a *EVMAdapter) GetChainID() string        { return string(a.chainID) }
 func (a *EVMAdapter) SupportsBloomFilter() bool { return true }
 
 func (a *EVMAdapter) parseBlock(data map[string]any) (*domain.Block, error) {
@@ -229,19 +229,16 @@ func (a *EVMAdapter) parseBlock(data map[string]any) (*domain.Block, error) {
 		Hash:       data["hash"].(string),
 		ParentHash: data["parentHash"].(string),
 		Status:     domain.BlockStatusPending,
-		Metadata:   map[string]any{},
 	}
 
 	if ts, ok := data["timestamp"].(string); ok {
 		block.Timestamp, _ = parseHexString(ts)
 	}
-	if txs, ok := data["transactions"].([]any); ok {
-		block.TxCount = len(txs)
+	if _, ok := data["transactions"].([]any); ok {
+		// Optimization: We could store tx count if needed primarily, but field is removed
 	}
 
-	block.Metadata["gasUsed"] = data["gasUsed"]
-	block.Metadata["gasLimit"] = data["gasLimit"]
-	block.Metadata["miner"] = data["miner"]
+	// Metadata removed
 
 	return block, nil
 }
@@ -257,7 +254,7 @@ func (a *EVMAdapter) parseTransaction(
 		ChainID:     a.chainID,
 		BlockNumber: block.Number,
 		BlockHash:   block.Hash,
-		TxHash:      data["hash"].(string),
+		Hash:        data["hash"].(string),
 		From:        strings.ToLower(data["from"].(string)),
 		To:          strings.ToLower(getString(data["to"])),
 		Value:       getString(data["value"]),
@@ -268,7 +265,7 @@ func (a *EVMAdapter) parseTransaction(
 	}
 
 	if idx, ok := data["transactionIndex"].(string); ok {
-		tx.TxIndex, _ = intFromHex(idx)
+		tx.Index, _ = intFromHex(idx)
 	}
 	if gas, ok := data["gas"].(string); ok {
 		tx.GasUsed, _ = parseHexString(gas)

@@ -41,7 +41,7 @@ type Adapter interface {
 	GetFinalityDepth() uint64
 
 	// GetChainID returns the chain identifier
-	GetChainID() string
+	GetChainID() domain.ChainID
 
 	// SupportsBloomFilter indicates if chain supports bloom filter optimization
 	SupportsBloomFilter() bool

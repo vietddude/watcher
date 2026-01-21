@@ -39,14 +39,20 @@ type MockLedgerServer struct {
 	GetTransactionFunc func(context.Context, *v2.GetTransactionRequest) (*v2.GetTransactionResponse, error)
 }
 
-func (m *MockLedgerServer) GetServiceInfo(ctx context.Context, in *v2.GetServiceInfoRequest) (*v2.GetServiceInfoResponse, error) {
+func (m *MockLedgerServer) GetServiceInfo(
+	ctx context.Context,
+	in *v2.GetServiceInfoRequest,
+) (*v2.GetServiceInfoResponse, error) {
 	if m.GetServiceInfoFunc != nil {
 		return m.GetServiceInfoFunc(ctx, in)
 	}
 	return nil, fmt.Errorf("GetServiceInfo not implemented")
 }
 
-func (m *MockLedgerServer) GetCheckpoint(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
+func (m *MockLedgerServer) GetCheckpoint(
+	ctx context.Context,
+	in *v2.GetCheckpointRequest,
+) (*v2.GetCheckpointResponse, error) {
 	if m.GetCheckpointFunc != nil {
 		return m.GetCheckpointFunc(ctx, in)
 	}
@@ -66,7 +72,10 @@ func setupTestAdapter(t *testing.T, server *MockLedgerServer) *Adapter {
 	go s.Serve(lis)
 
 	// Connect
-	conn, err := grpc.Dial(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(
+		lis.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
@@ -157,9 +166,7 @@ func TestGetBlock(t *testing.T) {
 	if block.ParentHash != prevDigest {
 		t.Errorf("Expected parent hash %s, got %s", prevDigest, block.ParentHash)
 	}
-	if block.TxCount != 1 {
-		t.Errorf("Expected 1 tx, got %d", block.TxCount)
-	}
+
 }
 
 func TestGetTransactions(t *testing.T) {
@@ -201,8 +208,8 @@ func TestGetTransactions(t *testing.T) {
 	if len(txs) != 1 {
 		t.Fatalf("Expected 1 tx, got %d", len(txs))
 	}
-	if txs[0].TxHash != txDigest {
-		t.Errorf("Expected tx hash %s, got %s", txDigest, txs[0].TxHash)
+	if txs[0].Hash != txDigest {
+		t.Errorf("Expected tx hash %s, got %s", txDigest, txs[0].Hash)
 	}
 	if txs[0].From != sender {
 		t.Errorf("Expected sender %s, got %s", sender, txs[0].From)
