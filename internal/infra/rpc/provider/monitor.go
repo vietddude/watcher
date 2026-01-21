@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const dayInMinutes = 1440
+
 // ProviderStatus represents the health state of a provider.
 type ProviderStatus int
 
@@ -44,8 +46,8 @@ type ProviderMonitor struct {
 	retryAfterDuration time.Duration
 
 	// Sliding window (Buckets for last 24h in minutes)
-	buckets     [1440]int
-	bucketTimes [1440]int64
+	buckets     [dayInMinutes]int
+	bucketTimes [dayInMinutes]int64
 
 	EstimatedDailyLimit int
 	windowDuration      time.Duration
@@ -88,7 +90,7 @@ func (pm *ProviderMonitor) RecordRequest(latency time.Duration) {
 	// Track request in minute bucket
 	now := time.Now()
 	minute := now.Unix() / 60
-	idx := minute % 1440
+	idx := minute % dayInMinutes
 
 	if pm.bucketTimes[idx] != minute {
 		pm.buckets[idx] = 0
@@ -167,7 +169,7 @@ func (pm *ProviderMonitor) CheckProviderStatus() ProviderStatus {
 	nowMinute := time.Now().Unix() / 60
 	cutoff := nowMinute - (24 * 60)
 
-	for i := 0; i < 1440; i++ {
+	for i := range dayInMinutes {
 		if pm.bucketTimes[i] > cutoff {
 			totalReqs += pm.buckets[i]
 		}
@@ -228,7 +230,7 @@ func (pm *ProviderMonitor) GetRequestCount(duration time.Duration) int {
 	cutoff := nowMinute - minutes
 
 	count := 0
-	for i := 0; i < 1440; i++ {
+	for i := range dayInMinutes {
 		if pm.bucketTimes[i] > cutoff {
 			count += pm.buckets[i]
 		}
@@ -251,7 +253,7 @@ func (pm *ProviderMonitor) GetStats() MonitorStats {
 	// Last 1h
 	reqLast1Hour := 0
 	cutoff1h := nowMinute - 60
-	for i := 0; i < 1440; i++ {
+	for i := range dayInMinutes {
 		if pm.bucketTimes[i] > cutoff1h {
 			reqLast1Hour += pm.buckets[i]
 		}
@@ -260,7 +262,7 @@ func (pm *ProviderMonitor) GetStats() MonitorStats {
 	// Last 24h
 	reqLast24Hours := 0
 	cutoff24h := nowMinute - (24 * 60)
-	for i := 0; i < 1440; i++ {
+	for i := range dayInMinutes {
 		if pm.bucketTimes[i] > cutoff24h {
 			reqLast24Hours += pm.buckets[i]
 		}
@@ -400,7 +402,7 @@ func (pm *ProviderMonitor) getUsagePercentUnlocked() float64 {
 	nowMinute := time.Now().Unix() / 60
 	cutoff := nowMinute - (24 * 60)
 	totalReqs := 0
-	for i := 0; i < 1440; i++ {
+	for i := range dayInMinutes {
 		if pm.bucketTimes[i] > cutoff {
 			totalReqs += pm.buckets[i]
 		}

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/rpc/routing"
@@ -21,9 +22,9 @@ type Coordinator struct {
 	proactiveRotation   bool
 	rotationThreshold   float64
 	minRotationInterval time.Duration
-	lastRotationTime    map[string]time.Time
+	lastRotationTime    map[domain.ChainID]time.Time
 
-	onRotation func(chainID, fromProvider, toProvider string, reason string)
+	onRotation func(chainID domain.ChainID, fromProvider, toProvider string, reason string)
 }
 
 // CoordinatorConfig holds configuration for the Coordinator.
@@ -59,12 +60,12 @@ func NewCoordinatorWithConfig(
 		proactiveRotation:   config.ProactiveRotation,
 		rotationThreshold:   config.RotationThreshold,
 		minRotationInterval: config.MinRotationInterval,
-		lastRotationTime:    make(map[string]time.Time),
+		lastRotationTime:    make(map[domain.ChainID]time.Time),
 	}
 }
 
 // GetBestProvider returns the best available provider.
-func (c *Coordinator) GetBestProvider(chainID string) (provider.Provider, error) {
+func (c *Coordinator) GetBestProvider(chainID domain.ChainID) (provider.Provider, error) {
 	providers := c.router.GetAllProviders(chainID)
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("no providers for chain %s", chainID)
@@ -103,7 +104,7 @@ func (c *Coordinator) GetBestProvider(chainID string) (provider.Provider, error)
 	return best.provider, nil
 }
 
-func (c *Coordinator) scoreProvider(chainID string, p provider.Provider) (float64, string) {
+func (c *Coordinator) scoreProvider(chainID domain.ChainID, p provider.Provider) (float64, string) {
 	score := 100.0
 	var reasons []string
 
@@ -149,7 +150,7 @@ func (c *Coordinator) scoreProvider(chainID string, p provider.Provider) (float6
 }
 
 // ShouldRotate checks if rotation is advisable.
-func (c *Coordinator) ShouldRotate(chainID, providerName string) (bool, string) {
+func (c *Coordinator) ShouldRotate(chainID domain.ChainID, providerName string) (bool, string) {
 	c.mu.RLock()
 	lastRotation := c.lastRotationTime[chainID]
 	c.mu.RUnlock()
@@ -169,13 +170,13 @@ func (c *Coordinator) ShouldRotate(chainID, providerName string) (bool, string) 
 }
 
 // RecordRequest records a request for rate tracking.
-func (c *Coordinator) RecordRequest(chainID, providerName, method string) {
+func (c *Coordinator) RecordRequest(chainID domain.ChainID, providerName, method string) {
 	c.budget.RecordCall(chainID, providerName, method)
 }
 
 // RotateIfNeeded checks if rotation is needed and performs it.
 func (c *Coordinator) RotateIfNeeded(
-	chainID string,
+	chainID domain.ChainID,
 	currentProvider provider.Provider,
 ) (provider.Provider, bool, string) {
 	shouldRotate, reason := c.ShouldRotate(chainID, currentProvider.GetName())
@@ -201,7 +202,7 @@ func (c *Coordinator) RotateIfNeeded(
 
 // SetRotationCallback sets a callback for rotation events.
 func (c *Coordinator) SetRotationCallback(
-	fn func(chainID, fromProvider, toProvider string, reason string),
+	fn func(chainID domain.ChainID, fromProvider, toProvider string, reason string),
 ) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -210,7 +211,10 @@ func (c *Coordinator) SetRotationCallback(
 
 // ForceRotate forces a rotation to the next best provider, ignoring cooldowns.
 // This is useful for immediate failover.
-func (c *Coordinator) ForceRotate(chainID, currentProviderName string) (provider.Provider, error) {
+func (c *Coordinator) ForceRotate(
+	chainID domain.ChainID,
+	currentProviderName string,
+) (provider.Provider, error) {
 	c.mu.Lock()
 	// Reset rotation timer to allow immediate rotation
 	c.lastRotationTime[chainID] = time.Time{}
@@ -251,7 +255,7 @@ func (c *Coordinator) ForceRotate(chainID, currentProviderName string) (provider
 // This is the primary entry point for the Client.
 func (c *Coordinator) Call(
 	ctx context.Context,
-	chainID, method string,
+	chainID domain.ChainID, method string,
 	params []any,
 ) (any, error) {
 	// 1. Budget Throttling (Global)
@@ -331,7 +335,7 @@ func (c *Coordinator) Call(
 // This is the new entry point for Operation-based calls (supporting both HTTP and gRPC).
 func (c *Coordinator) Execute(
 	ctx context.Context,
-	chainID string,
+	chainID domain.ChainID,
 	op provider.Operation,
 ) (any, error) {
 	// 1. Budget Throttling
@@ -388,7 +392,7 @@ func (c *Coordinator) Execute(
 // CallWithCoordination is deprecated. Use Call instead.
 func (c *Coordinator) CallWithCoordination(
 	ctx context.Context,
-	chainID, method string,
+	chainID domain.ChainID, method string,
 	params []any,
 ) (any, error) {
 	return c.Call(ctx, chainID, method, params)
@@ -406,9 +410,9 @@ func (c *Coordinator) GetBudget() BudgetTracker {
 
 // UpdateMetrics updates Prometheus metrics for all providers.
 // Call this periodically (e.g., every 10 seconds) from a background goroutine.
-func (c *Coordinator) UpdateMetrics(chainID, chainName string) {
+func (c *Coordinator) UpdateMetrics(chainID domain.ChainID) {
 	providers := c.router.GetAllProviders(chainID)
-
+	chainName, _ := domain.ChainCodeFromID(chainID)
 	for _, p := range providers {
 		// 1. Update Budget Metrics (Universal)
 		// This comes from the budget tracker and is available for all providers (HTTP, GRPC, etc.)

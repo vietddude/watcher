@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/rpc/routing"
@@ -13,7 +14,7 @@ import (
 // Client is the high-level interface for making RPC calls.
 // This is what application layers should use.
 type Client struct {
-	chainID     string
+	chainID     domain.ChainID
 	coordinator *budget.Coordinator
 }
 
@@ -29,7 +30,7 @@ type RPCClient interface {
 
 // NewClient creates a new RPC client.
 // It automatically initializes a default Coordinator.
-func NewClient(chainID string, router routing.Router, b budget.BudgetTracker) *Client {
+func NewClient(chainID domain.ChainID, router routing.Router, b budget.BudgetTracker) *Client {
 	coordinator := budget.NewCoordinator(router, b)
 	return &Client{
 		chainID:     chainID,
@@ -38,7 +39,7 @@ func NewClient(chainID string, router routing.Router, b budget.BudgetTracker) *C
 }
 
 // NewClientWithCoordinator creates a client with full coordinator support.
-func NewClientWithCoordinator(chainID string, coordinator *budget.Coordinator) *Client {
+func NewClientWithCoordinator(chainID domain.ChainID, coordinator *budget.Coordinator) *Client {
 	return &Client{
 		chainID:     chainID,
 		coordinator: coordinator,

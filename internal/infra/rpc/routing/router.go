@@ -9,29 +9,32 @@ package routing
 
 import (
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"sync"
+
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
 // Router handles provider selection and health tracking.
 type Router interface {
 	// AddProvider registers a provider for a specific chain
-	AddProvider(chainID string, p provider.Provider)
+	AddProvider(chainID domain.ChainID, p provider.Provider)
 
 	// GetProvider returns the best available provider for a chain
-	GetProvider(chainID string) (provider.Provider, error)
+	GetProvider(chainID domain.ChainID) (provider.Provider, error)
 
 	// GetProviderWithHint returns the best provider with a preference hint
-	GetProviderWithHint(chainID string, preferredProvider string) (provider.Provider, error)
+	GetProviderWithHint(chainID domain.ChainID, preferredProvider string) (provider.Provider, error)
 
 	// RotateProvider forces a provider rotation for a chain
-	RotateProvider(chainID string) (provider.Provider, error)
+	RotateProvider(chainID domain.ChainID) (provider.Provider, error)
 
 	// GetAllProviders returns all providers for a chain
-	GetAllProviders(chainID string) []provider.Provider
+	GetAllProviders(chainID domain.ChainID) []provider.Provider
 
 	// RecordSuccess tracks successful calls
 	RecordSuccess(providerName string, latency time.Duration)
@@ -42,7 +45,7 @@ type Router interface {
 
 // BudgetChecker is a minimal interface for budget checking in routing.
 type BudgetChecker interface {
-	CanUseProvider(chainID, providerName string) bool
+	CanUseProvider(chainID domain.ChainID, providerName string) bool
 }
 
 type providerMetrics struct {
@@ -58,7 +61,7 @@ type providerMetrics struct {
 // DefaultRouter implements smart provider selection with circuit breaker.
 type DefaultRouter struct {
 	mu             sync.RWMutex
-	chainProviders map[string][]provider.Provider
+	chainProviders map[domain.ChainID][]provider.Provider
 	providerHealth map[string]*providerMetrics
 	rotator        *ProviderRotator
 	budget         BudgetChecker
@@ -67,7 +70,7 @@ type DefaultRouter struct {
 // NewRouter creates a new router with round-robin rotation.
 func NewRouter(budget BudgetChecker) *DefaultRouter {
 	return &DefaultRouter{
-		chainProviders: make(map[string][]provider.Provider),
+		chainProviders: make(map[domain.ChainID][]provider.Provider),
 		providerHealth: make(map[string]*providerMetrics),
 		rotator:        NewProviderRotator(RotationRoundRobin),
 		budget:         budget,
@@ -77,7 +80,7 @@ func NewRouter(budget BudgetChecker) *DefaultRouter {
 // NewRouterWithStrategy creates a router with a specific rotation strategy.
 func NewRouterWithStrategy(budget BudgetChecker, strategy RotationStrategy) *DefaultRouter {
 	return &DefaultRouter{
-		chainProviders: make(map[string][]provider.Provider),
+		chainProviders: make(map[domain.ChainID][]provider.Provider),
 		providerHealth: make(map[string]*providerMetrics),
 		rotator:        NewProviderRotator(strategy),
 		budget:         budget,
@@ -85,7 +88,7 @@ func NewRouterWithStrategy(budget BudgetChecker, strategy RotationStrategy) *Def
 }
 
 // AddProvider registers a provider for a chain.
-func (r *DefaultRouter) AddProvider(chainID string, p provider.Provider) {
+func (r *DefaultRouter) AddProvider(chainID domain.ChainID, p provider.Provider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -96,7 +99,7 @@ func (r *DefaultRouter) AddProvider(chainID string, p provider.Provider) {
 }
 
 // GetProvider returns the best available provider for a chain.
-func (r *DefaultRouter) GetProvider(chainID string) (provider.Provider, error) {
+func (r *DefaultRouter) GetProvider(chainID domain.ChainID) (provider.Provider, error) {
 	r.mu.RLock()
 	providers := r.chainProviders[chainID]
 	r.mu.RUnlock()
@@ -110,15 +113,19 @@ func (r *DefaultRouter) GetProvider(chainID string) (provider.Provider, error) {
 	for _, p := range providers {
 		// Check circuit breaker first
 		if r.isCircuitOpen(p.GetName()) {
+			slog.Debug("Provider circuit open", "chain", chainID, "provider", p.GetName())
 			continue
 		}
 
 		if httpProv, ok := p.(*provider.HTTPProvider); ok {
 			status := httpProv.Monitor.CheckProviderStatus()
-			if status != provider.StatusBlocked {
-				available = append(available, p)
+			if status == provider.StatusBlocked {
+				slog.Debug("Provider blocked by monitor", "chain", chainID, "provider", p.GetName())
+				continue
 			}
+			available = append(available, p)
 		} else {
+
 			available = append(available, p)
 		}
 	}
@@ -145,7 +152,7 @@ func (r *DefaultRouter) GetProvider(chainID string) (provider.Provider, error) {
 
 // GetProviderWithHint returns a provider with preference for the hint.
 func (r *DefaultRouter) GetProviderWithHint(
-	chainID string,
+	chainID domain.ChainID,
 	preferredProvider string,
 ) (provider.Provider, error) {
 	if preferredProvider != "" {
@@ -168,7 +175,7 @@ func (r *DefaultRouter) GetProviderWithHint(
 }
 
 // RotateProvider forces a provider rotation.
-func (r *DefaultRouter) RotateProvider(chainID string) (provider.Provider, error) {
+func (r *DefaultRouter) RotateProvider(chainID domain.ChainID) (provider.Provider, error) {
 	r.mu.RLock()
 	providers := r.chainProviders[chainID]
 	r.mu.RUnlock()
@@ -184,7 +191,7 @@ func (r *DefaultRouter) RotateProvider(chainID string) (provider.Provider, error
 }
 
 // GetAllProviders returns all providers for a chain.
-func (r *DefaultRouter) GetAllProviders(chainID string) []provider.Provider {
+func (r *DefaultRouter) GetAllProviders(chainID domain.ChainID) []provider.Provider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

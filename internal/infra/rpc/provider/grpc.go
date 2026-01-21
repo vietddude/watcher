@@ -88,7 +88,7 @@ func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
 
 	start := time.Now()
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 {
 			// Simple backoff: 100ms, 200ms
 			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)

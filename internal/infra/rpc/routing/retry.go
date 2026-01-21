@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
@@ -112,7 +113,7 @@ func CallWithRetry(
 func CallWithRetryAndFailover(
 	ctx context.Context,
 	router Router,
-	chainID string,
+	chainID domain.ChainID,
 	method string,
 	params []any,
 	config RetryConfig,

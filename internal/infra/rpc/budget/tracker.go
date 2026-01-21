@@ -4,6 +4,8 @@ package budget
 import (
 	"sync"
 	"time"
+
+	"github.com/vietddude/watcher/internal/core/domain"
 )
 
 // UsageStats holds quota usage statistics.
@@ -23,12 +25,12 @@ type Config struct {
 
 // BudgetTracker interface.
 type BudgetTracker interface {
-	RecordCall(chainID, providerName, method string)
-	GetUsage(chainID string) UsageStats
-	GetProviderUsage(chainID, providerName string) UsageStats
-	CanMakeCall(chainID string) bool
-	CanUseProvider(chainID, providerName string) bool
-	GetThrottleDelay(chainID string) time.Duration
+	RecordCall(chainID domain.ChainID, providerName, method string)
+	GetUsage(chainID domain.ChainID) UsageStats
+	GetProviderUsage(chainID domain.ChainID, providerName string) UsageStats
+	CanMakeCall(chainID domain.ChainID) bool
+	CanUseProvider(chainID domain.ChainID, providerName string) bool
+	GetThrottleDelay(chainID domain.ChainID) time.Duration
 	GetUsagePercent() float64
 	Reset()
 }
@@ -45,18 +47,21 @@ type chainBudget struct {
 // DefaultBudgetTracker implements BudgetTracker.
 type DefaultBudgetTracker struct {
 	mu         sync.Mutex // Changed to Mutex for simplicity and safety
-	chainUsage map[string]*chainBudget
+	chainUsage map[domain.ChainID]*chainBudget
 	dailyLimit int
 	resetTime  time.Time
 }
 
 // NewBudgetTracker creates a new budget tracker.
-func NewBudgetTracker(dailyLimit int, budgetAllocation map[string]float64) *DefaultBudgetTracker {
+func NewBudgetTracker(
+	dailyLimit int,
+	budgetAllocation map[domain.ChainID]float64,
+) *DefaultBudgetTracker {
 	now := time.Now()
 	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 
 	tracker := &DefaultBudgetTracker{
-		chainUsage: make(map[string]*chainBudget),
+		chainUsage: make(map[domain.ChainID]*chainBudget),
 		dailyLimit: dailyLimit,
 		resetTime:  nextMidnight,
 	}
@@ -74,7 +79,7 @@ func NewBudgetTracker(dailyLimit int, budgetAllocation map[string]float64) *Defa
 }
 
 // RecordCall records a call for quota tracking.
-func (bt *DefaultBudgetTracker) RecordCall(chainID, providerName, method string) {
+func (bt *DefaultBudgetTracker) RecordCall(chainID domain.ChainID, providerName, method string) {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -107,7 +112,7 @@ func (bt *DefaultBudgetTracker) RecordCall(chainID, providerName, method string)
 }
 
 // GetUsage returns usage statistics for a chain.
-func (bt *DefaultBudgetTracker) GetUsage(chainID string) UsageStats {
+func (bt *DefaultBudgetTracker) GetUsage(chainID domain.ChainID) UsageStats {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -143,7 +148,10 @@ func (bt *DefaultBudgetTracker) GetUsage(chainID string) UsageStats {
 }
 
 // GetProviderUsage returns usage statistics for a specific provider.
-func (bt *DefaultBudgetTracker) GetProviderUsage(chainID, providerName string) UsageStats {
+func (bt *DefaultBudgetTracker) GetProviderUsage(
+	chainID domain.ChainID,
+	providerName string,
+) UsageStats {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -188,8 +196,8 @@ func (bt *DefaultBudgetTracker) GetProviderUsage(chainID, providerName string) U
 }
 
 // getChainIDs returns all chain IDs in chainUsage (for debugging).
-func (bt *DefaultBudgetTracker) getChainIDs() []string {
-	ids := make([]string, 0, len(bt.chainUsage))
+func (bt *DefaultBudgetTracker) getChainIDs() []domain.ChainID {
+	ids := make([]domain.ChainID, 0, len(bt.chainUsage))
 	for k := range bt.chainUsage {
 		ids = append(ids, k)
 	}
@@ -197,7 +205,7 @@ func (bt *DefaultBudgetTracker) getChainIDs() []string {
 }
 
 // CanMakeCall checks if a call can be made within budget.
-func (bt *DefaultBudgetTracker) CanMakeCall(chainID string) bool {
+func (bt *DefaultBudgetTracker) CanMakeCall(chainID domain.ChainID) bool {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -210,7 +218,7 @@ func (bt *DefaultBudgetTracker) CanMakeCall(chainID string) bool {
 }
 
 // CanUseProvider checks if a specific provider has quota remaining.
-func (bt *DefaultBudgetTracker) CanUseProvider(chainID, providerName string) bool {
+func (bt *DefaultBudgetTracker) CanUseProvider(chainID domain.ChainID, providerName string) bool {
 	// Re-using GetProviderUsage internal logic to avoid lock contention/double locking
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
@@ -238,7 +246,7 @@ func (bt *DefaultBudgetTracker) CanUseProvider(chainID, providerName string) boo
 }
 
 // GetThrottleDelay returns how long to wait before making a call.
-func (bt *DefaultBudgetTracker) GetThrottleDelay(chainID string) time.Duration {
+func (bt *DefaultBudgetTracker) GetThrottleDelay(chainID domain.ChainID) time.Duration {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -278,7 +286,7 @@ func (bt *DefaultBudgetTracker) Reset() {
 
 // SetProviderAllocation sets the daily allocation for a specific provider.
 func (bt *DefaultBudgetTracker) SetProviderAllocation(
-	chainID, providerName string,
+	chainID domain.ChainID, providerName string,
 	allocation int,
 ) {
 	bt.mu.Lock()

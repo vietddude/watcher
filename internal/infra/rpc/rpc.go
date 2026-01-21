@@ -48,6 +48,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 	"github.com/vietddude/watcher/internal/infra/rpc/routing"
@@ -188,7 +189,10 @@ type BudgetConfig = budget.Config
 type CoordinatedProvider = budget.CoordinatedProvider
 
 // NewBudgetTracker creates a new budget tracker.
-func NewBudgetTracker(dailyLimit int, budgetAllocation map[string]float64) *DefaultBudgetTracker {
+func NewBudgetTracker(
+	dailyLimit int,
+	budgetAllocation map[domain.ChainID]float64,
+) *DefaultBudgetTracker {
 	return budget.NewBudgetTracker(dailyLimit, budgetAllocation)
 }
 
@@ -213,8 +217,8 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 
 // NewCoordinatedProvider creates a provider that uses coordination logic.
 func NewCoordinatedProvider(
-	chainID, chainName string,
+	chainID domain.ChainID,
 	coordinator *Coordinator,
 ) *CoordinatedProvider {
-	return budget.NewCoordinatedProvider(chainID, chainName, coordinator)
+	return budget.NewCoordinatedProvider(chainID, coordinator)
 }

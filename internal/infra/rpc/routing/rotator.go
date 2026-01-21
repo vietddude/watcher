@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
 
@@ -29,16 +30,16 @@ type ProviderRotator struct {
 	mu       sync.RWMutex
 	strategy RotationStrategy
 
-	lastUsedIndex   map[string]int     // chainID -> index
-	providerWeights map[string]float64 // providerName -> weight
-	providerScores  map[string]float64 // providerName -> score
+	lastUsedIndex   map[domain.ChainID]int // chainID -> index
+	providerWeights map[string]float64     // providerName -> weight
+	providerScores  map[string]float64     // providerName -> score
 }
 
 // NewProviderRotator creates a new rotator with the given strategy.
 func NewProviderRotator(strategy RotationStrategy) *ProviderRotator {
 	return &ProviderRotator{
 		strategy:        strategy,
-		lastUsedIndex:   make(map[string]int),
+		lastUsedIndex:   make(map[domain.ChainID]int),
 		providerWeights: make(map[string]float64),
 		providerScores:  make(map[string]float64),
 	}
@@ -46,7 +47,7 @@ func NewProviderRotator(strategy RotationStrategy) *ProviderRotator {
 
 // SelectProvider chooses next provider based on strategy.
 func (pr *ProviderRotator) SelectProvider(
-	chainID string,
+	chainID domain.ChainID,
 	providers []provider.Provider,
 	_ Router,
 	budget BudgetChecker,
@@ -66,7 +67,7 @@ func (pr *ProviderRotator) SelectProvider(
 }
 
 func (pr *ProviderRotator) roundRobin(
-	chainID string,
+	chainID domain.ChainID,
 	providers []provider.Provider,
 ) (provider.Provider, error) {
 	pr.mu.Lock()
@@ -84,7 +85,7 @@ func (pr *ProviderRotator) roundRobin(
 }
 
 func (pr *ProviderRotator) weighted(
-	_ string,
+	_ domain.ChainID,
 	providers []provider.Provider,
 ) (provider.Provider, error) {
 	pr.mu.RLock()
@@ -138,7 +139,7 @@ func (pr *ProviderRotator) weighted(
 }
 
 func (pr *ProviderRotator) adaptive(
-	_ string,
+	_ domain.ChainID,
 	providers []provider.Provider,
 ) (provider.Provider, error) {
 	pr.mu.Lock()
@@ -189,7 +190,7 @@ func (pr *ProviderRotator) adaptive(
 }
 
 func (pr *ProviderRotator) proactive(
-	chainID string,
+	_ domain.ChainID,
 	providers []provider.Provider,
 	_ BudgetChecker,
 ) (provider.Provider, error) {

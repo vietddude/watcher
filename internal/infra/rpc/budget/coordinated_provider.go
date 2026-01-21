@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
 	"github.com/vietddude/watcher/internal/infra/rpc/provider"
 )
@@ -12,19 +13,17 @@ import (
 // CoordinatedProvider wraps a Coordinator to implement the provider.Provider interface.
 // This allows the EVMAdapter to use the failover/coordination logic transparently.
 type CoordinatedProvider struct {
-	chainID     string
-	chainName   string // For metrics
+	chainID     domain.ChainID
 	coordinator *Coordinator
 }
 
 // NewCoordinatedProvider creates a new provider that uses coordination logic.
 func NewCoordinatedProvider(
-	chainID, chainName string,
+	chainID domain.ChainID,
 	coordinator *Coordinator,
 ) *CoordinatedProvider {
 	return &CoordinatedProvider{
 		chainID:     chainID,
-		chainName:   chainName,
 		coordinator: coordinator,
 	}
 }
@@ -44,11 +43,12 @@ func (p *CoordinatedProvider) Call(ctx context.Context, method string, params []
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, method).Inc()
-	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, method).Observe(duration)
+	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	metrics.RPCCallsTotal.WithLabelValues(chainName, providerName, method).Inc()
+	metrics.RPCLatency.WithLabelValues(chainName, providerName, method).Observe(duration)
 
 	if err != nil {
-		metrics.RPCErrorsTotal.WithLabelValues(p.chainName, providerName, "call_error").Inc()
+		metrics.RPCErrorsTotal.WithLabelValues(chainName, providerName, "call_error").Inc()
 	}
 
 	return result, err
@@ -76,12 +76,13 @@ func (p *CoordinatedProvider) BatchCall(
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, "batch").
+	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	metrics.RPCCallsTotal.WithLabelValues(chainName, providerName, "batch").
 		Add(float64(len(requests)))
-	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, "batch").Observe(duration)
+	metrics.RPCLatency.WithLabelValues(chainName, providerName, "batch").Observe(duration)
 
 	if err != nil {
-		metrics.RPCErrorsTotal.WithLabelValues(p.chainName, providerName, "batch_error").Inc()
+		metrics.RPCErrorsTotal.WithLabelValues(chainName, providerName, "batch_error").Inc()
 	}
 
 	return result, err
@@ -89,7 +90,8 @@ func (p *CoordinatedProvider) BatchCall(
 
 // GetName returns a generic name as it represents multiple providers.
 func (p *CoordinatedProvider) GetName() string {
-	return "coordinated-provider-" + p.chainID
+	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	return "coordinated-provider-" + chainName
 }
 
 // GetHealth returns an aggregated or representative health status.
@@ -154,11 +156,12 @@ func (p *CoordinatedProvider) Execute(ctx context.Context, op provider.Operation
 
 	// Record metrics
 	duration := time.Since(start).Seconds()
-	metrics.RPCCallsTotal.WithLabelValues(p.chainName, providerName, opName).Inc()
-	metrics.RPCLatency.WithLabelValues(p.chainName, providerName, opName).Observe(duration)
+	chainName, _ := domain.ChainCodeFromID(p.chainID)
+	metrics.RPCCallsTotal.WithLabelValues(chainName, providerName, opName).Inc()
+	metrics.RPCLatency.WithLabelValues(chainName, providerName, opName).Observe(duration)
 
 	if err != nil {
-		metrics.RPCErrorsTotal.WithLabelValues(p.chainName, providerName, "execute_error").Inc()
+		metrics.RPCErrorsTotal.WithLabelValues(chainName, providerName, "execute_error").Inc()
 	}
 
 	return result, err
