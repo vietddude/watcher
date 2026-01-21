@@ -86,10 +86,10 @@ func (p *Processor) ProcessOne(
 		}
 	}
 
-	// Check quota
+	// Check quota - now via GetUsagePercent which is global
 	if p.config.QuotaCheckEnabled && p.budget != nil {
-		usage := p.budget.GetUsage(chainID)
-		if usage.UsagePercentage >= p.config.QuotaWarnPercent {
+		usagePercent := p.budget.GetUsagePercent()
+		if usagePercent >= p.config.QuotaWarnPercent {
 			return ErrQuotaExceeded
 		}
 	}

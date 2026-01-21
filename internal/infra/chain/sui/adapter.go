@@ -3,12 +3,17 @@ package sui
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"sync"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	suipb "github.com/vietddude/watcher/internal/infra/chain/sui/generated/sui/rpc/v2"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -16,7 +21,18 @@ import (
 type Adapter struct {
 	client  rpc.RPCClient
 	chainID domain.ChainID
+
+	// Single-slot cache for the current block being processed
+	mu               sync.RWMutex
+	cachedCheckpoint *suipb.Checkpoint
+
+	// Parallel Prefetching
+	prefetchMu      sync.Mutex
+	prefetchBuffer  map[uint64]*suipb.Checkpoint
+	prefetchLoading map[uint64]chan struct{} // channel to wait for ongoing fetches
 }
+
+const prefetchWindow = 20
 
 // Ensure Adapter implements chain.Adapter
 var _ chain.Adapter = (*Adapter)(nil)
@@ -24,8 +40,10 @@ var _ chain.Adapter = (*Adapter)(nil)
 // NewAdapter creates a new Sui adapter
 func NewAdapter(chainID domain.ChainID, client rpc.RPCClient) *Adapter {
 	return &Adapter{
-		client:  client,
-		chainID: chainID,
+		client:          client,
+		chainID:         chainID,
+		prefetchBuffer:  make(map[uint64]*suipb.Checkpoint),
+		prefetchLoading: make(map[uint64]chan struct{}),
 	}
 }
 
@@ -57,6 +75,57 @@ func (a *Adapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 
 // GetBlock returns a block by number (lightweight)
 func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
+	// 1. Check current cache (in case of re-requests)
+	a.mu.RLock()
+	if a.cachedCheckpoint != nil && a.cachedCheckpoint.GetSequenceNumber() == blockNumber {
+		defer a.mu.RUnlock()
+		return a.mapCheckpointToBlock(a.cachedCheckpoint)
+	}
+	a.mu.RUnlock()
+
+	// 2. Check Prefetch Buffer
+	var cp *suipb.Checkpoint
+	a.prefetchMu.Lock()
+	if cached, ok := a.prefetchBuffer[blockNumber]; ok {
+		cp = cached
+		delete(a.prefetchBuffer, blockNumber)
+		a.prefetchMu.Unlock()
+	} else if waitCh, loading := a.prefetchLoading[blockNumber]; loading {
+		// Ongoing fetch - wait for it
+		a.prefetchMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-waitCh:
+			// Recurse to pick up from buffer
+			return a.GetBlock(ctx, blockNumber)
+		}
+	} else {
+		a.prefetchMu.Unlock()
+		// Cache miss - Fetch Manually
+		var err error
+		cp, err = a.fetchCheckpoint(ctx, blockNumber)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if cp == nil {
+		return nil, nil
+	}
+
+	// 3. Update current cache
+	a.mu.Lock()
+	a.cachedCheckpoint = cp
+	a.mu.Unlock()
+
+	// 4. Trigger next prefetch window
+	go a.prefetch(blockNumber + 1)
+
+	return a.mapCheckpointToBlock(cp)
+}
+
+func (a *Adapter) fetchCheckpoint(ctx context.Context, blockNumber uint64) (*suipb.Checkpoint, error) {
 	op := rpc.NewGRPCOperation(
 		"GetCheckpoint",
 		func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
@@ -65,6 +134,7 @@ func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Blo
 				"sequence_number",
 				"digest",
 				"summary",
+				"transactions",
 			)
 			if err != nil {
 				return nil, err
@@ -81,6 +151,9 @@ func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Blo
 
 	res, err := a.client.Execute(ctx, op)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get checkpoint %d: %w", blockNumber, err)
 	}
 
@@ -88,11 +161,56 @@ func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Blo
 	if !ok {
 		return nil, fmt.Errorf("invalid response type: %T", res)
 	}
-	if resp.Checkpoint == nil {
-		return nil, fmt.Errorf("checkpoint %d not found", blockNumber)
-	}
+	return resp.Checkpoint, nil
+}
 
-	return a.mapCheckpointToBlock(resp.Checkpoint)
+func (a *Adapter) prefetch(start uint64) {
+	for i := uint64(0); i < prefetchWindow; i++ {
+		num := start + i
+
+		a.prefetchMu.Lock()
+		if _, exists := a.prefetchBuffer[num]; exists {
+			a.prefetchMu.Unlock()
+			continue
+		}
+		if _, loading := a.prefetchLoading[num]; loading {
+			a.prefetchMu.Unlock()
+			continue
+		}
+
+		// Start prefetch
+		waitCh := make(chan struct{})
+		a.prefetchLoading[num] = waitCh
+		a.prefetchMu.Unlock()
+
+		go func(n uint64, ch chan struct{}) {
+			defer close(ch)
+			defer func() {
+				a.prefetchMu.Lock()
+				delete(a.prefetchLoading, n)
+				a.prefetchMu.Unlock()
+			}()
+
+			// Background context for prefetching
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			cp, err := a.fetchCheckpoint(ctx, n)
+			if err == nil && cp != nil {
+				a.prefetchMu.Lock()
+				a.prefetchBuffer[n] = cp
+				// Cleanup old buffer if it gets too large
+				if len(a.prefetchBuffer) > prefetchWindow*2 {
+					for k := range a.prefetchBuffer {
+						if k < n-prefetchWindow {
+							delete(a.prefetchBuffer, k)
+						}
+					}
+				}
+				a.prefetchMu.Unlock()
+			}
+		}(num, waitCh)
+	}
 }
 
 // GetBlockByHash returns a block by digest
@@ -112,6 +230,9 @@ func (a *Adapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain
 
 	res, err := a.client.Execute(ctx, op)
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get checkpoint by digest %s: %w", blockHash, err)
 	}
 
@@ -121,7 +242,7 @@ func (a *Adapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain
 	}
 
 	if resp.Checkpoint == nil {
-		return nil, fmt.Errorf("checkpoint %s not found", blockHash)
+		return nil, nil
 	}
 
 	return a.mapCheckpointToBlock(resp.Checkpoint)
@@ -133,42 +254,54 @@ func (a *Adapter) GetTransactions(
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
 	// Fetches the checkpoint details to ensure we have transactions.
-	op := rpc.NewGRPCOperation(
-		"GetCheckpointDetails",
-		func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
-			mask, err := fieldmaskpb.New(
-				&suipb.Checkpoint{},
-				"sequence_number",
-				"digest",
-				"summary",
-				"transactions",
-			)
-			if err != nil {
-				return nil, err
-			}
+	// Check Cache First
+	a.mu.RLock()
+	cached := a.cachedCheckpoint
+	a.mu.RUnlock()
 
-			req := &suipb.GetCheckpointRequest{
-				CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
-					SequenceNumber: block.Number,
-				},
-				ReadMask: mask,
-			}
-			return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
-		},
-	)
+	var cp *suipb.Checkpoint
+	if cached != nil && cached.GetSequenceNumber() == block.Number {
+		// Cache Hit!
+		cp = cached
+	} else {
+		// Cache Miss - Fetch
+		op := rpc.NewGRPCOperation(
+			"GetCheckpointDetails",
+			func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+				mask, err := fieldmaskpb.New(
+					&suipb.Checkpoint{},
+					"sequence_number",
+					"digest",
+					"summary",
+					"transactions",
+				)
+				if err != nil {
+					return nil, err
+				}
 
-	res, err := a.client.Execute(ctx, op)
-	if err != nil {
-		return nil, err
-	}
+				req := &suipb.GetCheckpointRequest{
+					CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
+						SequenceNumber: block.Number,
+					},
+					ReadMask: mask,
+				}
+				return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+			},
+		)
 
-	resp, ok := res.(*suipb.GetCheckpointResponse)
-	if !ok {
-		return nil, fmt.Errorf("invalid response type: %T", res)
-	}
-	cp := resp.Checkpoint
-	if cp == nil {
-		return nil, fmt.Errorf("checkpoint %d not found", block.Number)
+		res, err := a.client.Execute(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, ok := res.(*suipb.GetCheckpointResponse)
+		if !ok {
+			return nil, fmt.Errorf("invalid response type: %T", res)
+		}
+		cp = resp.Checkpoint
+		if cp == nil {
+			return nil, fmt.Errorf("checkpoint %d not found", block.Number)
+		}
 	}
 
 	var txs []*domain.Transaction
@@ -277,40 +410,50 @@ func (a *Adapter) HasRelevantTransactions(
 	}
 
 	// 2. Fetch lightweight checkpoint with ONLY ownership info
-	op := rpc.NewGRPCOperation(
-		"GetCheckpointOwners",
-		func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
-			mask, err := fieldmaskpb.New(&suipb.Checkpoint{},
-				"transactions.transaction.sender",
-				"transactions.effects.changed_objects.output_owner.address",
-				"transactions.effects.changed_objects.output_owner.kind",
-			)
-			if err != nil {
-				return nil, err
-			}
+	// 2. Check Cache
+	a.mu.RLock()
+	cached := a.cachedCheckpoint
+	a.mu.RUnlock()
 
-			req := &suipb.GetCheckpointRequest{
-				CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
-					SequenceNumber: block.Number,
-				},
-				ReadMask: mask,
-			}
-			return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
-		},
-	)
+	var cp *suipb.Checkpoint
+	if cached != nil && cached.GetSequenceNumber() == block.Number {
+		// Cache Hit!
+		cp = cached
+	} else {
+		// Cache Miss - Fetch lightweight checkpoint with ONLY ownership info
+		op := rpc.NewGRPCOperation(
+			"GetCheckpointOwners",
+			func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+				mask, err := fieldmaskpb.New(&suipb.Checkpoint{},
+					"transactions",
+				)
+				if err != nil {
+					return nil, err
+				}
 
-	res, err := a.client.Execute(ctx, op)
-	if err != nil {
-		return false, fmt.Errorf("failed to get checkpoint owners: %w", err)
-	}
+				req := &suipb.GetCheckpointRequest{
+					CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
+						SequenceNumber: block.Number,
+					},
+					ReadMask: mask,
+				}
+				return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
+			},
+		)
 
-	resp, ok := res.(*suipb.GetCheckpointResponse)
-	if !ok {
-		return false, fmt.Errorf("invalid response type: %T", res)
-	}
-	cp := resp.Checkpoint
-	if cp == nil {
-		return false, fmt.Errorf("checkpoint not found")
+		res, err := a.client.Execute(ctx, op)
+		if err != nil {
+			return false, fmt.Errorf("failed to get checkpoint owners: %w", err)
+		}
+
+		resp, ok := res.(*suipb.GetCheckpointResponse)
+		if !ok {
+			return false, fmt.Errorf("invalid response type: %T", res)
+		}
+		cp = resp.Checkpoint
+		if cp == nil {
+			return false, fmt.Errorf("checkpoint not found")
+		}
 	}
 
 	// 3. Iterate and check for matches

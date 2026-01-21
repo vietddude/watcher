@@ -61,7 +61,7 @@ func (a *EVMAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.
 		return nil, err
 	}
 	if result == nil {
-		return nil, fmt.Errorf("block %d not found", blockNumber)
+		return nil, nil
 	}
 
 	blockData, ok := result.(map[string]any)
@@ -80,7 +80,7 @@ func (a *EVMAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*dom
 		return nil, err
 	}
 	if result == nil {
-		return nil, fmt.Errorf("block %s not found", blockHash)
+		return nil, nil
 	}
 
 	blockData, ok := result.(map[string]any)

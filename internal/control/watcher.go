@@ -49,7 +49,6 @@ type Config struct {
 	Port                int
 	Chains              []config.ChainConfig
 	Backfill            backfill.ProcessorConfig
-	Budget              rpc.BudgetConfig
 	Reorg               reorg.Config
 	Redis               redisclient.Config
 	Database            postgres.Config // Add database config
@@ -112,23 +111,24 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		slog.Info("Using Memory storage")
 	}
 
-	// 2. Initialize Shared Components
-	cursorMgr := cursor.NewManager(cursorRepo)
-
-	// Default allocation for all chains
-	allocation := make(map[domain.ChainID]float64)
+	// Build provider quota map from config (provider name -> daily quota)
+	budgetTracker := rpc.NewBudgetTracker()
 	for _, c := range cfg.Chains {
-		allocation[c.ChainID] = 1.0 / float64(len(cfg.Chains))
+		for _, p := range c.Providers {
+			budgetTracker.SetProviderQuota(p.Name, p.DailyQuota)
+			if p.IntervalLimit > 0 && p.IntervalDuration != "" {
+				dur, err := time.ParseDuration(p.IntervalDuration)
+				if err == nil {
+					budgetTracker.SetProviderLimit(p.Name, p.IntervalLimit, dur)
+				} else {
+					slog.Warn("Invalid interval_duration for provider", "provider", p.Name, "duration", p.IntervalDuration, "error", err)
+				}
+			}
+		}
 	}
-	if len(cfg.Chains) == 0 {
-		allocation["default"] = 1.0
-	}
-	// Use config for budget quota if available, otherwise default
-	quota := cfg.Budget.DailyQuota
-	if quota == 0 {
-		quota = 10000
-	}
-	budgetTracker := rpc.NewBudgetTracker(quota, allocation)
+
+	// Initialize Cursor Manager
+	cursorMgr := cursor.NewManager(cursorRepo)
 
 	fetcher := &MultiChainFetcher{adapters: make(map[domain.ChainID]chain.Adapter)}
 	indexers := make(map[domain.ChainID]indexer.Indexer)
@@ -137,6 +137,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	chainIDs := make([]domain.ChainID, 0, len(cfg.Chains))
 	chainProviders := make(map[domain.ChainID][]string)
 	scanIntervals := make(map[domain.ChainID]time.Duration)
+	routers := make(map[domain.ChainID]rpc.Router)
 
 	for _, chainCfg := range cfg.Chains {
 		chainID := chainCfg.ChainID
@@ -151,15 +152,18 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		// 3. Initialize RPC Router & Coordinator
 		router := rpc.NewRouter(budgetTracker)
 
+		hasActiveProvider := false
 		for _, p := range chainCfg.Providers {
 			// Check if this is a sui chain to use GRPC provider
 			if chainCfg.Type == "sui" {
 				// Use GRPC Provider
 				grpcProvider, err := rpc.NewGRPCProvider(context.Background(), p.Name, p.URL)
 				if err != nil {
-					return nil, fmt.Errorf("failed to create grpc provider: %w", err)
+					slog.Error("Failed to initialize GRPC provider", "chain", chainID, "provider", p.Name, "error", err)
+					continue
 				}
 				router.AddProvider(chainID, grpcProvider)
+				hasActiveProvider = true
 			} else {
 				// Use HTTP Provider (EVM default)
 				rpcProvider := rpc.NewHTTPProvider(
@@ -168,8 +172,16 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 					10*time.Second,
 				)
 				router.AddProvider(chainID, rpcProvider)
+				hasActiveProvider = true
 			}
 		}
+
+		if !hasActiveProvider {
+			return nil, fmt.Errorf("no functional providers found for chain %s", chainID)
+		}
+
+		router.SetRotationStrategy(rpc.RotationProactive)
+		routers[chainID] = router
 
 		coordinator := rpc.NewCoordinator(router, budgetTracker)
 		coordinatedProvider := rpc.NewCoordinatedProvider(
@@ -255,6 +267,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		budgetTracker,
 		fetcher,
 		scanIntervals,
+		routers,
 	)
 
 	healthServer := health.NewServer(healthMon, cfg.Port)

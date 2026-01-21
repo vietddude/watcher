@@ -43,13 +43,9 @@ func NewGRPCProvider(ctx context.Context, name, endpoint string) (*GRPCProvider,
 	}
 
 	// Add some default dial options
-	opts = append(opts, grpc.WithBlock()) // Wait for connection
-
-	// Use a timeout for the dial
-	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(dialCtx, target, opts...)
+	// Note: We don't use WithBlock() anymore to avoid hanging startup if a provider is slow or down.
+	// The Circuit Breaker will handle offline providers after the first failed call.
+	conn, err := grpc.DialContext(ctx, target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial grpc endpoint %s: %w", target, err)
 	}

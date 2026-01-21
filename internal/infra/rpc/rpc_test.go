@@ -89,12 +89,9 @@ func TestRPC_RetryAndFailover(t *testing.T) {
 	}
 
 	// Budget tracker (permissive for test)
-	budget := NewBudgetTracker(
-		1000,
-		map[domain.ChainID]float64{
-			TestChain: 1.0,
-		},
-	)
+	budget := NewBudgetTracker()
+	budget.SetProviderQuota("primary", 1000)
+	budget.SetProviderQuota("secondary", 1000)
 
 	// Router setup
 	router := NewRouter(budget)

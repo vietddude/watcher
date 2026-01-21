@@ -117,6 +117,7 @@ func (p *HTTPProvider) callRPC(
 		p.RecordFailure()
 
 		if p.Monitor.DetectThrottlePattern(string(body)) {
+			p.Monitor.RecordThrottle(429, "")
 			return nil, fmt.Errorf("throttle detected in response: %s", string(body))
 		}
 
@@ -140,6 +141,7 @@ func (p *HTTPProvider) callRPC(
 		}
 
 		if p.Monitor.DetectThrottlePattern(errMsg) {
+			p.Monitor.RecordThrottle(429, "")
 			p.RecordFailure()
 			return nil, fmt.Errorf("throttle in rpc error: %s", errMsg)
 		}
@@ -320,6 +322,7 @@ func (p *HTTPProvider) executeREST(ctx context.Context, op Operation) (any, erro
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		p.RecordFailure()
 		if p.Monitor.DetectThrottlePattern(string(body)) {
+			p.Monitor.RecordThrottle(429, "")
 			return nil, fmt.Errorf("throttle detected in response: %s", string(body))
 		}
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, string(body))

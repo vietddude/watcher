@@ -4,8 +4,6 @@ package budget
 import (
 	"sync"
 	"time"
-
-	"github.com/vietddude/watcher/internal/core/domain"
 )
 
 // UsageStats holds quota usage statistics.
@@ -18,68 +16,47 @@ type UsageStats struct {
 	NextResetAt     time.Time
 }
 
-// Config holds budget configuration.
-type Config struct {
-	DailyQuota int
-}
-
 // BudgetTracker interface.
 type BudgetTracker interface {
-	RecordCall(chainID domain.ChainID, providerName, method string)
-	GetUsage(chainID domain.ChainID) UsageStats
-	GetProviderUsage(chainID domain.ChainID, providerName string) UsageStats
-	CanMakeCall(chainID domain.ChainID) bool
-	CanUseProvider(chainID domain.ChainID, providerName string) bool
-	GetThrottleDelay(chainID domain.ChainID) time.Duration
+	RecordCall(providerName, method string)
+	GetProviderUsage(providerName string) UsageStats
+	CanMakeCall(providerName string) bool
+	GetThrottleDelay(providerName string) time.Duration
 	GetUsagePercent() float64
 	Reset()
 }
 
-type chainBudget struct {
-	totalCalls          int
-	callsThisHour       int
-	hourStartTime       time.Time
-	dailyAllocation     int
-	providerAllocations map[string]int
-	providerCalls       map[string]int
+type providerBudget struct {
+	totalCalls     int
+	callsThisHour  int
+	hourStartTime  time.Time
+	dailyLimit     int // 0 = unlimited
+	windowLimit    int // requests per window (0 = unlimited)
+	windowDuration time.Duration
+	windowCalls    int
+	windowStart    time.Time
 }
 
-// DefaultBudgetTracker implements BudgetTracker.
+// DefaultBudgetTracker implements BudgetTracker with per-provider tracking.
 type DefaultBudgetTracker struct {
-	mu         sync.Mutex // Changed to Mutex for simplicity and safety
-	chainUsage map[domain.ChainID]*chainBudget
-	dailyLimit int
-	resetTime  time.Time
+	mu            sync.Mutex
+	providerUsage map[string]*providerBudget
+	resetTime     time.Time
 }
 
 // NewBudgetTracker creates a new budget tracker.
-func NewBudgetTracker(
-	dailyLimit int,
-	budgetAllocation map[domain.ChainID]float64,
-) *DefaultBudgetTracker {
+func NewBudgetTracker() *DefaultBudgetTracker {
 	now := time.Now()
 	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 
-	tracker := &DefaultBudgetTracker{
-		chainUsage: make(map[domain.ChainID]*chainBudget),
-		dailyLimit: dailyLimit,
-		resetTime:  nextMidnight,
+	return &DefaultBudgetTracker{
+		providerUsage: make(map[string]*providerBudget),
+		resetTime:     nextMidnight,
 	}
-
-	for chainID, percentage := range budgetAllocation {
-		tracker.chainUsage[chainID] = &chainBudget{
-			dailyAllocation:     int(float64(dailyLimit) * percentage),
-			hourStartTime:       now,
-			providerAllocations: make(map[string]int),
-			providerCalls:       make(map[string]int),
-		}
-	}
-
-	return tracker
 }
 
 // RecordCall records a call for quota tracking.
-func (bt *DefaultBudgetTracker) RecordCall(chainID domain.ChainID, providerName, method string) {
+func (bt *DefaultBudgetTracker) RecordCall(providerName, method string) {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -88,16 +65,15 @@ func (bt *DefaultBudgetTracker) RecordCall(chainID domain.ChainID, providerName,
 		bt.resetUnsafe(now)
 	}
 
-	budget, ok := bt.chainUsage[chainID]
+	budget, ok := bt.providerUsage[providerName]
 	if !ok {
-		// Auto-initialize for unknown chains with default 10% allocation
-		budget = &chainBudget{
-			dailyAllocation:     bt.dailyLimit / 10,
-			hourStartTime:       now,
-			providerAllocations: make(map[string]int),
-			providerCalls:       make(map[string]int),
+		// Auto-initialize for unknown providers with unlimited quota
+		budget = &providerBudget{
+			dailyLimit:    0, // unlimited
+			hourStartTime: now,
+			windowStart:   now,
 		}
-		bt.chainUsage[chainID] = budget
+		bt.providerUsage[providerName] = budget
 	}
 
 	if time.Since(budget.hourStartTime) >= time.Hour {
@@ -105,176 +81,124 @@ func (bt *DefaultBudgetTracker) RecordCall(chainID domain.ChainID, providerName,
 		budget.hourStartTime = now
 	}
 
+	// Window reset
+	if budget.windowDuration > 0 && time.Since(budget.windowStart) >= budget.windowDuration {
+		budget.windowCalls = 0
+		budget.windowStart = now
+	}
+
 	budget.totalCalls++
 	budget.callsThisHour++
-	budget.providerCalls[providerName]++
-
+	budget.windowCalls++
 }
 
-// GetUsage returns usage statistics for a chain.
-func (bt *DefaultBudgetTracker) GetUsage(chainID domain.ChainID) UsageStats {
+// GetProviderUsage returns usage statistics for a provider.
+func (bt *DefaultBudgetTracker) GetProviderUsage(providerName string) UsageStats {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
-	budget, ok := bt.chainUsage[chainID]
+	budget, ok := bt.providerUsage[providerName]
 	if !ok {
-		defaultLimit := bt.dailyLimit / 10
 		return UsageStats{
-			DailyLimit:      defaultLimit,
-			RemainingCalls:  defaultLimit,
+			DailyLimit:      0, // unlimited
+			RemainingCalls:  999999,
 			UsagePercentage: 0,
 			NextResetAt:     bt.resetTime,
 		}
 	}
 
-	remaining := budget.dailyAllocation - budget.totalCalls
+	// Handle unlimited quota
+	if budget.dailyLimit == 0 {
+		return UsageStats{
+			TotalCalls:      budget.totalCalls,
+			CallsPerHour:    budget.callsThisHour,
+			DailyLimit:      0,
+			RemainingCalls:  999999, // Show as effectively unlimited
+			UsagePercentage: 0,
+			NextResetAt:     bt.resetTime,
+		}
+	}
+
+	remaining := budget.dailyLimit - budget.totalCalls
 	if remaining < 0 {
 		remaining = 0
 	}
 
-	usagePercentage := 0.0
-	if budget.dailyAllocation > 0 {
-		usagePercentage = float64(budget.totalCalls) / float64(budget.dailyAllocation) * 100
-	}
+	usagePercentage := float64(budget.totalCalls) / float64(budget.dailyLimit) * 100
 
 	return UsageStats{
 		TotalCalls:      budget.totalCalls,
 		CallsPerHour:    budget.callsThisHour,
-		DailyLimit:      budget.dailyAllocation,
+		DailyLimit:      budget.dailyLimit,
 		RemainingCalls:  remaining,
 		UsagePercentage: usagePercentage,
 		NextResetAt:     bt.resetTime,
 	}
-}
-
-// GetProviderUsage returns usage statistics for a specific provider.
-func (bt *DefaultBudgetTracker) GetProviderUsage(
-	chainID domain.ChainID,
-	providerName string,
-) UsageStats {
-	bt.mu.Lock()
-	defer bt.mu.Unlock()
-
-	budget, ok := bt.chainUsage[chainID]
-	if !ok {
-		return UsageStats{
-			DailyLimit:      bt.dailyLimit / 10,
-			RemainingCalls:  bt.dailyLimit / 10,
-			UsagePercentage: 0,
-			NextResetAt:     bt.resetTime,
-		}
-	}
-
-	providerCalls := budget.providerCalls[providerName]
-	providerAllocation := budget.providerAllocations[providerName]
-
-	// Default provider allocation if not set
-	if providerAllocation == 0 {
-		providerAllocation = budget.dailyAllocation / 5 // Default: 20% of chain allocation
-		if providerAllocation < 1000 {
-			providerAllocation = 1000
-		}
-	}
-
-	remaining := providerAllocation - providerCalls
-	if remaining < 0 {
-		remaining = 0
-	}
-
-	usagePercentage := 0.0
-	if providerAllocation > 0 {
-		usagePercentage = float64(providerCalls) / float64(providerAllocation) * 100
-	}
-
-	return UsageStats{
-		TotalCalls:      providerCalls,
-		DailyLimit:      providerAllocation,
-		RemainingCalls:  remaining,
-		UsagePercentage: usagePercentage,
-		NextResetAt:     bt.resetTime,
-	}
-}
-
-// getChainIDs returns all chain IDs in chainUsage (for debugging).
-func (bt *DefaultBudgetTracker) getChainIDs() []domain.ChainID {
-	ids := make([]domain.ChainID, 0, len(bt.chainUsage))
-	for k := range bt.chainUsage {
-		ids = append(ids, k)
-	}
-	return ids
 }
 
 // CanMakeCall checks if a call can be made within budget.
-func (bt *DefaultBudgetTracker) CanMakeCall(chainID domain.ChainID) bool {
+func (bt *DefaultBudgetTracker) CanMakeCall(providerName string) bool {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
-	budget, ok := bt.chainUsage[chainID]
+	budget, ok := bt.providerUsage[providerName]
 	if !ok {
-		return true // Allow if not tracked yet (will be initialized on RecordCall)
+		return true // Allow if not tracked (will be initialized on RecordCall)
 	}
 
-	return budget.totalCalls < budget.dailyAllocation
-}
-
-// CanUseProvider checks if a specific provider has quota remaining.
-func (bt *DefaultBudgetTracker) CanUseProvider(chainID domain.ChainID, providerName string) bool {
-	// Re-using GetProviderUsage internal logic to avoid lock contention/double locking
-	bt.mu.Lock()
-	defer bt.mu.Unlock()
-
-	budget, ok := bt.chainUsage[chainID]
-	if !ok {
-		return true
+	// 1. Daily Limit
+	if budget.dailyLimit > 0 && budget.totalCalls >= budget.dailyLimit {
+		return false
 	}
 
-	providerCalls := budget.providerCalls[providerName]
-	providerAllocation := budget.providerAllocations[providerName]
-	if providerAllocation == 0 {
-		providerAllocation = budget.dailyAllocation / 5
-		if providerAllocation < 1000 {
-			providerAllocation = 1000
+	// 2. Window Limit
+	if budget.windowLimit > 0 && budget.windowDuration > 0 {
+		if time.Since(budget.windowStart) < budget.windowDuration {
+			if budget.windowCalls >= budget.windowLimit {
+				return false
+			}
 		}
 	}
 
-	if providerAllocation <= 0 {
-		return true
-	}
-
-	usagePercentage := float64(providerCalls) / float64(providerAllocation) * 100
-	return usagePercentage < 95
+	return true
 }
 
 // GetThrottleDelay returns how long to wait before making a call.
-func (bt *DefaultBudgetTracker) GetThrottleDelay(chainID domain.ChainID) time.Duration {
+func (bt *DefaultBudgetTracker) GetThrottleDelay(providerName string) time.Duration {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
-	budget, ok := bt.chainUsage[chainID]
+	budget, ok := bt.providerUsage[providerName]
 	if !ok {
 		return 0
 	}
 
-	// Simple thresholds based on daily usage
-	usagePercentage := 0.0
-	if budget.dailyAllocation > 0 {
-		usagePercentage = float64(budget.totalCalls) / float64(budget.dailyAllocation) * 100
+	// 1. Daily Quota throttle
+	if budget.dailyLimit > 0 {
+		usagePercentage := float64(budget.totalCalls) / float64(budget.dailyLimit) * 100
+		if usagePercentage >= 100 {
+			return time.Until(bt.resetTime)
+		}
+		if usagePercentage > 90 {
+			return 2 * time.Second
+		}
+		if usagePercentage > 75 {
+			return 500 * time.Millisecond
+		}
 	}
 
-	if usagePercentage < 50 {
-		return 0
-	}
-	if usagePercentage < 70 {
-		return 100 * time.Millisecond
-	}
-	if usagePercentage < 90 {
-		return 500 * time.Millisecond
-	}
-	if usagePercentage < 100 {
-		return 2 * time.Second
+	// 2. Window-based throttle (Proactive)
+	if budget.windowLimit > 0 && budget.windowDuration > 0 {
+		windowUsage := float64(budget.windowCalls) / float64(budget.windowLimit)
+		if windowUsage > 0.95 {
+			return time.Until(budget.windowStart.Add(budget.windowDuration))
+		}
+		if windowUsage > 0.8 {
+			return 200 * time.Millisecond
+		}
 	}
 
-	return time.Until(bt.resetTime)
+	return 0
 }
 
 // Reset resets all usage counters.
@@ -284,45 +208,67 @@ func (bt *DefaultBudgetTracker) Reset() {
 	bt.resetUnsafe(time.Now())
 }
 
-// SetProviderAllocation sets the daily allocation for a specific provider.
-func (bt *DefaultBudgetTracker) SetProviderAllocation(
-	chainID domain.ChainID, providerName string,
-	allocation int,
-) {
-	bt.mu.Lock()
-	defer bt.mu.Unlock()
-
-	budget, ok := bt.chainUsage[chainID]
-	if !ok {
-		return
-	}
-
-	budget.providerAllocations[providerName] = allocation
-}
-
 func (bt *DefaultBudgetTracker) resetUnsafe(now time.Time) {
-	for _, budget := range bt.chainUsage {
+	for _, budget := range bt.providerUsage {
 		budget.totalCalls = 0
 		budget.callsThisHour = 0
 		budget.hourStartTime = now
-		budget.providerCalls = make(map[string]int)
+		budget.windowCalls = 0
+		budget.windowStart = now
 	}
 
 	bt.resetTime = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 }
 
-// GetUsagePercent returns the overall usage percentage across all chains.
+// GetUsagePercent returns the average usage percentage across all providers with limits.
 func (bt *DefaultBudgetTracker) GetUsagePercent() float64 {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
 	totalCalls := 0
-	for _, budget := range bt.chainUsage {
-		totalCalls += budget.totalCalls
+	totalLimit := 0
+	for _, budget := range bt.providerUsage {
+		if budget.dailyLimit > 0 {
+			totalCalls += budget.totalCalls
+			totalLimit += budget.dailyLimit
+		}
 	}
 
-	if bt.dailyLimit == 0 {
+	if totalLimit == 0 {
 		return 0
 	}
-	return float64(totalCalls) / float64(bt.dailyLimit) * 100
+	return float64(totalCalls) / float64(totalLimit) * 100
+}
+
+// SetProviderQuota sets the daily quota for a provider.
+func (bt *DefaultBudgetTracker) SetProviderQuota(providerName string, quota int) {
+	bt.mu.Lock()
+	defer bt.mu.Unlock()
+
+	budget, ok := bt.providerUsage[providerName]
+	if !ok {
+		budget = &providerBudget{
+			hourStartTime: time.Now(),
+			windowStart:   time.Now(),
+		}
+		bt.providerUsage[providerName] = budget
+	}
+	budget.dailyLimit = quota
+}
+
+// SetProviderLimit sets the window-based limit.
+func (bt *DefaultBudgetTracker) SetProviderLimit(providerName string, limit int, duration time.Duration) {
+	bt.mu.Lock()
+	defer bt.mu.Unlock()
+
+	budget, ok := bt.providerUsage[providerName]
+	if !ok {
+		budget = &providerBudget{
+			hourStartTime: time.Now(),
+			windowStart:   time.Now(),
+		}
+		bt.providerUsage[providerName] = budget
+	}
+	budget.windowLimit = limit
+	budget.windowDuration = duration
 }

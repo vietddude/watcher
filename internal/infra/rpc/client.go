@@ -72,9 +72,9 @@ func (c *Client) SetRotationStrategy(strategy routing.RotationStrategy) {
 	}
 }
 
-// GetUsage returns current budget usage.
-func (c *Client) GetUsage() budget.UsageStats {
-	return c.coordinator.GetBudget().GetUsage(c.chainID)
+// GetUsagePercent returns current global budget usage percentage.
+func (c *Client) GetUsagePercent() float64 {
+	return c.coordinator.GetBudget().GetUsagePercent()
 }
 
 // GetProviderStats returns monitoring stats for all providers.
@@ -124,10 +124,8 @@ func (c *Client) PrintMonitorDashboard() string {
 		fmt.Fprintf(&sb, "\n")
 	}
 
-	usage := c.GetUsage()
+	usagePercent := c.GetUsagePercent()
 	fmt.Fprintf(&sb, "Budget Status:\n")
-	fmt.Fprintf(&sb, "  Quota: %d/%d (%.1f%%)\n",
-		usage.TotalCalls, usage.DailyLimit, usage.UsagePercentage)
-	fmt.Fprintf(&sb, "  Resets at: %s\n", usage.NextResetAt.Format("15:04:05"))
+	fmt.Fprintf(&sb, "  Usage: %.1f%%\n", usagePercent)
 	return sb.String()
 }

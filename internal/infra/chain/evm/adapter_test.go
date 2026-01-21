@@ -78,6 +78,24 @@ func TestEVMAdapter_GetBlock(t *testing.T) {
 	}
 }
 
+func TestEVMAdapter_GetBlock_NotFound(t *testing.T) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
+			return nil, nil // Return nil result for not found
+		},
+	}
+
+	adapter := NewEVMAdapter("ethereum", mock, 12)
+
+	block, err := adapter.GetBlock(context.Background(), 1234567)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if block != nil {
+		t.Fatal("expected nil block")
+	}
+}
+
 func TestEVMAdapter_GetTransactions(t *testing.T) {
 	mock := &MockRPCClient{
 		CallFunc: func(ctx context.Context, method string, params any) (any, error) {

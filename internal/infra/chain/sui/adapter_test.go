@@ -11,7 +11,9 @@ import (
 	v2 "github.com/vietddude/watcher/internal/infra/chain/sui/generated/sui/rpc/v2"
 	"github.com/vietddude/watcher/internal/infra/rpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -167,6 +169,44 @@ func TestGetBlock(t *testing.T) {
 		t.Errorf("Expected parent hash %s, got %s", prevDigest, block.ParentHash)
 	}
 
+}
+
+func TestGetBlock_NotFound(t *testing.T) {
+	mockServer := &MockLedgerServer{
+		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
+			return nil, status.Error(codes.NotFound, "not found")
+		},
+	}
+
+	adapter := setupTestAdapter(t, mockServer)
+
+	block, err := adapter.GetBlock(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if block != nil {
+		t.Fatal("Expected nil block for NotFound error")
+	}
+}
+
+func TestGetBlock_NilCheckpoint(t *testing.T) {
+	mockServer := &MockLedgerServer{
+		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
+			return &v2.GetCheckpointResponse{
+				Checkpoint: nil,
+			}, nil
+		},
+	}
+
+	adapter := setupTestAdapter(t, mockServer)
+
+	block, err := adapter.GetBlock(context.Background(), 123)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if block != nil {
+		t.Fatal("Expected nil block for nil checkpoint in response")
+	}
 }
 
 func TestGetTransactions(t *testing.T) {

@@ -45,7 +45,7 @@ type Router interface {
 
 // BudgetChecker is a minimal interface for budget checking in routing.
 type BudgetChecker interface {
-	CanUseProvider(chainID domain.ChainID, providerName string) bool
+	CanMakeCall(providerName string) bool
 }
 
 type providerMetrics struct {
@@ -138,7 +138,7 @@ func (r *DefaultRouter) GetProvider(chainID domain.ChainID) (provider.Provider, 
 	if r.budget != nil {
 		var budgetAvailable []provider.Provider
 		for _, p := range available {
-			if r.budget.CanUseProvider(chainID, p.GetName()) {
+			if r.budget.CanMakeCall(p.GetName()) {
 				budgetAvailable = append(budgetAvailable, p)
 			}
 		}

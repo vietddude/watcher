@@ -77,21 +77,22 @@ func (m *MockProvider) Execute(ctx context.Context, op provider.Operation) (any,
 func (m *MockProvider) Close() error { return nil }
 
 func TestCoordinator_Rotation(t *testing.T) {
-	tracker := NewBudgetTracker(1000, map[domain.ChainID]float64{domain.EthereumMainnet: 1.0})
+	tracker := NewBudgetTracker()
+	tracker.SetProviderQuota("p1", 100)
+	tracker.SetProviderQuota("p2", 1000)
 
 	p1 := &MockProvider{Name: "p1"}
 	p2 := &MockProvider{Name: "p2"}
 
 	// Pre-fill p1 to exhaust quota
-	tracker.SetProviderAllocation(domain.EthereumMainnet, "p1", 100)
 	for i := 0; i < 96; i++ { // 96% usage
-		tracker.RecordCall(domain.EthereumMainnet, "p1", "test")
+		tracker.RecordCall("p1", "test")
 	}
 
 	router := &MockRouter{providers: []provider.Provider{p1, p2}}
 	coordinator := NewCoordinator(router, tracker)
 
-	// Should rotate from p1 to p2
+	// Should prefer p2 because p1 has high usage
 	best, err := coordinator.GetBestProvider(domain.EthereumMainnet)
 	if err != nil {
 		t.Fatalf("GetBestProvider failed: %v", err)
@@ -103,7 +104,9 @@ func TestCoordinator_Rotation(t *testing.T) {
 }
 
 func TestCoordinator_Latency(t *testing.T) {
-	tracker := NewBudgetTracker(1000, map[domain.ChainID]float64{domain.EthereumMainnet: 1.0})
+	tracker := NewBudgetTracker()
+	tracker.SetProviderQuota("p1", 1000)
+
 	p1 := &MockProvider{Name: "p1"}
 	router := &MockRouter{providers: []provider.Provider{p1}}
 	coordinator := NewCoordinator(router, tracker)

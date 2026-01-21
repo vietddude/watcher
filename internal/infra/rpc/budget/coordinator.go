@@ -108,7 +108,7 @@ func (c *Coordinator) scoreProvider(chainID domain.ChainID, p provider.Provider)
 	score := 100.0
 	var reasons []string
 
-	usage := c.budget.GetProviderUsage(chainID, p.GetName())
+	usage := c.budget.GetProviderUsage(p.GetName())
 
 	if usage.UsagePercentage >= 95 {
 		return 0, "quota exhausted"
@@ -159,7 +159,7 @@ func (c *Coordinator) ShouldRotate(chainID domain.ChainID, providerName string) 
 		return false, "too soon since last rotation"
 	}
 
-	usage := c.budget.GetProviderUsage(chainID, providerName)
+	usage := c.budget.GetProviderUsage(providerName)
 
 	if usage.UsagePercentage >= c.rotationThreshold {
 		return true, fmt.Sprintf("usage %.1f%% exceeds threshold %.1f%%",
@@ -170,8 +170,8 @@ func (c *Coordinator) ShouldRotate(chainID domain.ChainID, providerName string) 
 }
 
 // RecordRequest records a request for rate tracking.
-func (c *Coordinator) RecordRequest(chainID domain.ChainID, providerName, method string) {
-	c.budget.RecordCall(chainID, providerName, method)
+func (c *Coordinator) RecordRequest(providerName, method string) {
+	c.budget.RecordCall(providerName, method)
 }
 
 // RotateIfNeeded checks if rotation is needed and performs it.
@@ -258,21 +258,19 @@ func (c *Coordinator) Call(
 	chainID domain.ChainID, method string,
 	params []any,
 ) (any, error) {
-	// 1. Budget Throttling (Global)
-	if !c.budget.CanMakeCall(chainID) {
-		if delay := c.budget.GetThrottleDelay(chainID); delay > 0 {
+	// 1. Budget Throttling - check current provider
+	p, err := c.GetBestProvider(chainID)
+	if err != nil {
+		return nil, err
+	}
+	if !c.budget.CanMakeCall(p.GetName()) {
+		if delay := c.budget.GetThrottleDelay(p.GetName()); delay > 0 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-time.After(delay):
 			}
 		}
-	}
-
-	// 2. Get Initial Provider
-	p, err := c.GetBestProvider(chainID)
-	if err != nil {
-		return nil, err
 	}
 
 	// 3. Execution Loop (Retry & Failover)
@@ -298,7 +296,7 @@ func (c *Coordinator) Call(
 		result, err := routing.CallWithRetry(ctx, rpcP, method, params, routing.DefaultRetryConfig)
 		latency := time.Since(start)
 
-		c.RecordRequest(chainID, p.GetName(), method)
+		c.RecordRequest(p.GetName(), method)
 
 		if err == nil {
 			c.router.RecordSuccess(p.GetName(), latency) // Fix validation: passing actual latency
@@ -338,21 +336,19 @@ func (c *Coordinator) Execute(
 	chainID domain.ChainID,
 	op provider.Operation,
 ) (any, error) {
-	// 1. Budget Throttling
-	if !c.budget.CanMakeCall(chainID) {
-		if delay := c.budget.GetThrottleDelay(chainID); delay > 0 {
+	// 1. Budget Throttling - check current provider
+	p, err := c.GetBestProvider(chainID)
+	if err != nil {
+		return nil, err
+	}
+	if !c.budget.CanMakeCall(p.GetName()) {
+		if delay := c.budget.GetThrottleDelay(p.GetName()); delay > 0 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-time.After(delay):
 			}
 		}
-	}
-
-	// 2. Get Initial Provider
-	p, err := c.GetBestProvider(chainID)
-	if err != nil {
-		return nil, err
 	}
 
 	// 3. Execution Loop (Failover only)
@@ -367,7 +363,7 @@ func (c *Coordinator) Execute(
 
 		if err == nil {
 			// Only record usage on success
-			c.RecordRequest(chainID, p.GetName(), op.Name)
+			c.RecordRequest(p.GetName(), op.Name)
 			return result, nil
 		}
 
@@ -416,7 +412,7 @@ func (c *Coordinator) UpdateMetrics(chainID domain.ChainID) {
 	for _, p := range providers {
 		// 1. Update Budget Metrics (Universal)
 		// This comes from the budget tracker and is available for all providers (HTTP, GRPC, etc.)
-		budgetStats := c.budget.GetProviderUsage(chainID, p.GetName())
+		budgetStats := c.budget.GetProviderUsage(p.GetName())
 		metrics.RPCQuotaRemaining.WithLabelValues(chainName, p.GetName()).
 			Set(float64(budgetStats.RemainingCalls))
 

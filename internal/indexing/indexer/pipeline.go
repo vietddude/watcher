@@ -179,31 +179,8 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// Log block processing
-	label := "block"
-	if p.cfg.ChainType == "sui" {
-		label = "checkpoint"
-	}
-	slog.Debug(
-		fmt.Sprintf("Processing %s", label),
-		"chain",
-		p.cfg.ChainName,
-		label,
-		targetBlockNum,
-		"hash",
-		func() string {
-			if len(block.Hash) > 16 {
-				return block.Hash[:16] + "..."
-			}
-			return block.Hash
-		}(),
-		"txs",
-		len(txs),
-	)
-
 	// Record metrics
 	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
-	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
 	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
 
 	// 5. Filter Transactions using bloom filter

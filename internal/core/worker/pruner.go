@@ -60,11 +60,10 @@ func (p *Pruner) prune(ctx context.Context) {
 	threshold := uint64(time.Now().Add(-p.cfg.RetentionPeriod).Unix())
 
 	if err := p.blockRepo.DeleteBlocksOlderThan(ctx, domain.ChainID(p.cfg.ChainID), threshold); err != nil {
-		// Log error (we don't have logger here, maybe fmt?)
-		slog.Error("[Pruner] failed to prune blocks for %s: %v\n", p.cfg.ChainID, err)
+		slog.Error("Failed to prune blocks", "chain", p.cfg.ChainID, "error", err)
 	}
 
 	if err := p.txRepo.DeleteTransactionsOlderThan(ctx, domain.ChainID(p.cfg.ChainID), threshold); err != nil {
-		slog.Error("[Pruner] failed to prune transactions for %s: %v\n", p.cfg.ChainID, err)
+		slog.Error("Failed to prune transactions", "chain", p.cfg.ChainID, "error", err)
 	}
 }

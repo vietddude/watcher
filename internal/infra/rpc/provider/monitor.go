@@ -108,9 +108,7 @@ func (pm *ProviderMonitor) RecordThrottle(statusCode int, retryAfter string) {
 
 	if statusCode == 429 {
 		pm.status429Count++
-		if retryAfter != "" {
-			pm.retryAfterDuration = 60 * time.Second // Default 1min
-		}
+		pm.retryAfterDuration = 60 * time.Second
 	}
 
 	if statusCode == 403 {

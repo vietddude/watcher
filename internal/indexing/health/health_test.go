@@ -7,6 +7,7 @@ import (
 
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/core/domain"
+	"github.com/vietddude/watcher/internal/infra/rpc"
 	"github.com/vietddude/watcher/internal/infra/rpc/budget"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -169,24 +170,22 @@ func (s *stubFailedRepo) Delete(ctx context.Context, id string) error { return n
 // Stub Budget Tracker
 type stubBudgetTracker struct{}
 
-func (s *stubBudgetTracker) RecordCall(chainID domain.ChainID, providerName, method string) {}
-func (s *stubBudgetTracker) GetUsage(chainID domain.ChainID) budget.UsageStats {
+func (s *stubBudgetTracker) RecordCall(providerName, method string) {}
+func (s *stubBudgetTracker) GetProviderUsage(providerName string) budget.UsageStats {
 	return budget.UsageStats{}
+}
+func (s *stubBudgetTracker) CanMakeCall(providerName string) bool               { return true }
+func (s *stubBudgetTracker) GetThrottleDelay(providerName string) time.Duration { return 0 }
+func (s *stubBudgetTracker) GetUsagePercent() float64                           { return 0 }
+func (s *stubBudgetTracker) Reset()                                             {}
+
+type stubRouter struct {
+	rpc.Router
 }
 
-func (s *stubBudgetTracker) GetProviderUsage(
-	chainID domain.ChainID,
-	providerName string,
-) budget.UsageStats {
-	return budget.UsageStats{}
+func (s *stubRouter) GetProvider(chainID domain.ChainID) (rpc.Provider, error) {
+	return nil, nil
 }
-func (s *stubBudgetTracker) CanMakeCall(chainID domain.ChainID) bool { return true }
-func (s *stubBudgetTracker) CanUseProvider(chainID domain.ChainID, providerName string) bool {
-	return true
-}
-func (s *stubBudgetTracker) GetThrottleDelay(chainID domain.ChainID) time.Duration { return 0 }
-func (s *stubBudgetTracker) GetUsagePercent() float64                              { return 0 }
-func (s *stubBudgetTracker) Reset()                                                {}
 
 func TestMonitor_Healthy(t *testing.T) {
 	monitor := NewMonitor(
@@ -197,6 +196,7 @@ func TestMonitor_Healthy(t *testing.T) {
 		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
 		nil,
+		map[domain.ChainID]rpc.Router{domain.ChainID("ethereum"): &stubRouter{}},
 	)
 
 	report := monitor.CheckHealth(context.Background())
@@ -216,6 +216,7 @@ func TestMonitor_Degraded(t *testing.T) {
 		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
 		nil,
+		map[domain.ChainID]rpc.Router{domain.ChainID("ethereum"): &stubRouter{}},
 	)
 
 	report := monitor.CheckHealth(context.Background())
@@ -235,6 +236,7 @@ func TestMonitor_Critical(t *testing.T) {
 		&stubBudgetTracker{},
 		&mockFetcher{height: 1000},
 		nil,
+		map[domain.ChainID]rpc.Router{domain.ChainID("ethereum"): &stubRouter{}},
 	)
 
 	report := monitor.CheckHealth(context.Background())

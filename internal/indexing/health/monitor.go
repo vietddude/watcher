@@ -29,10 +29,13 @@ type Monitor struct {
 	failedRepo    storage.FailedBlockRepository
 	budgetTracker rpc.BudgetTracker
 	heightFetcher BlockHeightFetcher
+	routers       map[domain.ChainID]rpc.Router
 	lastCheck     time.Time
 	lastReport    map[domain.ChainID]ChainHealth
 	scanIntervals map[domain.ChainID]time.Duration
 	mu            sync.RWMutex
+	lastLag       map[domain.ChainID]uint64
+	highLagCount  map[domain.ChainID]int
 }
 
 // NewMonitor creates a new health monitor.
@@ -44,8 +47,15 @@ func NewMonitor(
 	budgetTracker rpc.BudgetTracker,
 	heightFetcher BlockHeightFetcher,
 	scanIntervals map[domain.ChainID]time.Duration,
+	routers map[domain.ChainID]rpc.Router,
 ) *Monitor {
+	var chains []domain.ChainID
+	for id := range providers {
+		chains = append(chains, id)
+	}
+
 	return &Monitor{
+		chains:        chains,
 		providers:     providers,
 		cursorMgr:     cursorMgr,
 		missingRepo:   missingRepo,
@@ -53,7 +63,10 @@ func NewMonitor(
 		budgetTracker: budgetTracker,
 		heightFetcher: heightFetcher,
 		scanIntervals: scanIntervals,
+		routers:       routers,
 		lastReport:    make(map[domain.ChainID]ChainHealth),
+		lastLag:       make(map[domain.ChainID]uint64),
+		highLagCount:  make(map[domain.ChainID]int),
 	}
 }
 
@@ -78,10 +91,23 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 
 		// 1. Get Block Lag
 		latestHeight, err := m.heightFetcher.GetLatestHeight(ctx, chainID)
+
+		// Emit metrics ideally even if there is an error (using last known?), but here we only emit on success
 		if err == nil {
 			lag, err := m.cursorMgr.GetLag(ctx, chainID, latestHeight)
-			if err == nil && lag > 0 {
+			if err == nil {
 				health.BlockLag = uint64(lag)
+
+				// Get current cursor for metrics
+				cursor, _ := m.cursorMgr.Get(ctx, chainID)
+
+				// Update Prometheus Metrics for Chain Status
+				chainName, _ := domain.ChainNameFromID(chainID)
+				metrics.ChainLatestBlock.WithLabelValues(chainName).Set(float64(latestHeight))
+				metrics.ChainLag.WithLabelValues(chainName).Set(float64(lag))
+				if cursor != nil {
+					metrics.IndexerLatestBlock.WithLabelValues(chainName).Set(float64(cursor.BlockNumber))
+				}
 
 				// Performance Suggestion
 				if lag > 10 && lag <= 100 {
@@ -97,28 +123,59 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 					}
 				}
 
-				// [NEW] Gap Detection and Auto-Jump
-				// If we are significantly behind (>100 blocks), we jump to head
-				// and queue the missing range for backfill.
-				if lag > 100 {
+				// [IMPROVED] Intelligent Gap Detection and Auto-Jump
+				// 1. Determine Dynamic Threshold
+				threshold := uint64(1000) // Default: 1000 blocks
+				if chainID == domain.SuiTestnet {
+					threshold = 5000 // Sui moves fast, allow more buffer
+				}
+
+				// 2. Trend Analysis
+				isGrowing := true
+				if prevLag, ok := m.lastLag[chainID]; ok {
+					if uint64(lag) < prevLag {
+						isGrowing = false
+					}
+				}
+				m.lastLag[chainID] = uint64(lag)
+
+				// 3. Evaluation
+				shouldTrigger := false
+				if uint64(lag) > threshold {
+					m.highLagCount[chainID]++
+
+					// Conditions to trigger:
+					// A. Lag is growing AND above threshold
+					// B. Lag is persistently high (> 3 checks) even if stable
+					if isGrowing {
+						shouldTrigger = true
+					} else if m.highLagCount[chainID] >= 3 {
+						shouldTrigger = true
+						slog.Info("Lag is persistently high (stalled), triggering backfill", "chain", chainID, "lag", lag)
+					}
+				} else {
+					m.highLagCount[chainID] = 0
+				}
+
+				if shouldTrigger {
 					currentCursor, _ := m.cursorMgr.Get(ctx, chainID)
 					// Verify we have a cursor (we should if lag is calculated)
 					if currentCursor != nil {
 						// Define the gap: (current + 1) -> (latest - 1)
-						// The pipeline will pick up 'latest' after the jump.
 						gapFrom := currentCursor.BlockNumber + 1
 						gapTo := latestHeight - 1
 
 						if gapTo >= gapFrom {
-							slog.Warn("Detected significant lag, triggering auto-backfill",
+							slog.Warn("Triggering auto-backfill and cursor jump",
 								"chain", chainID,
 								"lag", lag,
+								"growing", isGrowing,
+								"count", m.highLagCount[chainID],
 								"gapFrom", gapFrom,
 								"gapTo", gapTo,
 							)
 
 							// 1. Create MissingBlock task
-							// Priority 10 (High) because it's recent history
 							missing := &domain.MissingBlock{
 								ID:        uuid.New().String(),
 								ChainID:   chainID,
@@ -130,31 +187,19 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 							}
 
 							if err := m.missingRepo.Add(ctx, missing); err != nil {
-								slog.Error(
-									"Failed to queue backfill task",
-									"chain",
-									chainID,
-									"error",
-									err,
-								)
+								slog.Error("Failed to queue backfill task", "chain", chainID, "error", err)
 							} else {
 								slog.Info("Queued backfill task", "chain", chainID, "range", fmt.Sprintf("%d-%d", gapFrom, gapTo))
 
 								// 2. Jump Cursor to Latest Height
-								// This allows the real-time indexer to resume from the tip immediately.
-								// We jump to (latest - 1) essentially, so next text 'latest' is processed?
-								// Use latestHeight - 1 so the pipeline picks up 'latestHeight' as next block.
-								// Or if we jump to 'latestHeight', pipeline waits for 'latestHeight+1'.
-								// Let's jump to latestHeight to start fresh from NEXT block, or reuse latest?
-								// Pipeline does: target = cursor + 1.
-								// If we want to process latestHeight, cursor should be latestHeight - 1.
 								jumpTarget := latestHeight - 1
 								if err := m.cursorMgr.Jump(ctx, chainID, jumpTarget); err != nil {
 									slog.Error("Failed to jump cursor", "chain", chainID, "error", err)
 								} else {
 									slog.Info("Jumped cursor to tip", "chain", chainID, "target", jumpTarget)
-									// Reset lag for report
 									health.BlockLag = 0
+									m.highLagCount[chainID] = 0
+									m.lastLag[chainID] = 0
 								}
 							}
 						}
@@ -179,7 +224,7 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 		if providers, ok := m.providers[chainID]; ok {
 			chainName, _ := domain.ChainNameFromID(chainID)
 			for _, provider := range providers {
-				pUsage := m.budgetTracker.GetProviderUsage(chainID, provider)
+				pUsage := m.budgetTracker.GetProviderUsage(provider)
 				metrics.RPCProviderQuotaUsage.WithLabelValues(chainName, provider).
 					Set(pUsage.UsagePercentage / 100.0)
 				metrics.RPCQuotaRemaining.WithLabelValues(chainName, provider).
@@ -187,8 +232,23 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 			}
 		}
 
+		// 5. Chain Availability (Check if ANY provider is functional)
+		isAvailable := 0.0
+		if router, ok := m.routers[chainID]; ok {
+			_, err := router.GetProvider(chainID)
+			if err == nil {
+				isAvailable = 1.0
+			} else {
+				slog.Error("CRITICAL: No functional providers available for chain", "chain", chainID, "error", err)
+			}
+		}
+		chainName, _ := domain.ChainNameFromID(chainID)
+		metrics.ChainAvailable.WithLabelValues(chainName).Set(isAvailable)
+
 		// Evaluate Status
-		if health.BlockLag > 100 || health.MissingBlocks > 10 || health.FailedBlocks > 50 {
+		if isAvailable == 0 {
+			health.Status = StatusCritical
+		} else if health.BlockLag > 100 || health.MissingBlocks > 10 || health.FailedBlocks > 50 {
 			health.Status = StatusCritical
 		} else if health.BlockLag > 10 || health.MissingBlocks > 0 || health.FailedBlocks > 0 {
 			health.Status = StatusDegraded

@@ -61,6 +61,15 @@ var (
 		[]string{"chain"},
 	)
 
+	// ChainLag tracks the lag between chain head and indexer cursor
+	ChainLag = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_chain_lag",
+			Help: "Lag between chain head and indexer cursor",
+		},
+		[]string{"chain"},
+	)
+
 	// RPCProviderHealthScore tracks provider health score (0-100)
 	RPCProviderHealthScore = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -87,8 +96,6 @@ var (
 		},
 		[]string{"chain", "provider"},
 	)
-
-	// --- New Metrics ---
 
 	// BackfillBlocksQueued tracks number of blocks queued for backfill
 	BackfillBlocksQueued = promauto.NewGaugeVec(
@@ -168,6 +175,15 @@ var (
 		prometheus.CounterOpts{
 			Name: "watcher_transactions_processed_total",
 			Help: "Transactions actually processed (matched filter)",
+		},
+		[]string{"chain"},
+	)
+
+	// ChainAvailable tracks if a chain has any functional RPC providers (0 or 1)
+	ChainAvailable = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_chain_available",
+			Help: "Chain availability (1 if at least one provider is functional, 0 otherwise)",
 		},
 		[]string{"chain"},
 	)
