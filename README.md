@@ -90,26 +90,21 @@ Watcher is meant to be **backend infrastructure**, not a data warehouse.
 make docker-up
 ```
 
-### 2. Minimal config (free-tier friendly)
+### 2. Config (config.yaml)
 
 ```yaml
 chains:
-  - chain_id: "1"
-    internal_code: "ETH_MAINNET"
-    scan_interval: 5s
+  - id: "ETHEREUM_MAINNET"
+    type: "evm"
+    scan_interval: 12s
     finality_blocks: 12
     providers:
       - name: "public"
         url: "https://ethereum-rpc.publicnode.com"
+        daily_quota: 100000
 
 database:
   url: "postgres://watcher:watcher123@localhost:5432/watcher?sslmode=disable"
-
-backfill:
-  blocks_per_minute: 30
-
-budget:
-  daily_quota: 10000
 ```
 
 ### 3. Run
@@ -118,6 +113,33 @@ budget:
 make run
 ```
 
+## Configuration Guide
+
+To ensure Watcher runs reliably, you must configure each chain correctly in `config.yaml`:
+
+### 1. Chain ID (`id`)
+Use descriptive identifiers instead of numbers (e.g., `BITCOIN_MAINNET` instead of `0`). This serves as the unique key for storing cursors in the database.
+
+### 2. Chain Type (`type`)
+Watcher supports four main chain architectures:
+*   `evm`: For Ethereum, BSC, Polygon, Arbitrum, etc.
+*   `bitcoin`: For the Bitcoin network (uses JSON-RPC 1.0).
+*   `sui`: For the Sui network (uses gRPC).
+*   `tron`: For the Tron network (uses REST).
+
+### 3. Scan Interval (`scan_interval`)
+The delay between new block polls.
+*   **EVM/Sui**: Recommended `5s` - `12s` due to fast block times.
+*   **Bitcoin**: Recommended `1m` - `10m`. Since Bitcoin averages 10-minute block times, polling too frequently will result in repetitive "Out of range" logs.
+
+### 4. Finality Blocks (`finality_blocks`)
+The number of confirmation blocks required to safely avoid reorgs.
+*   Ethereum: `12`
+*   Bitcoin: `6`
+*   Polygon: `32` (suggested for higher safety)
+
+### 5. Providers
+Multiple providers can be defined for failover support. Use `daily_quota` to ensure Watcher automatically stops using a provider once its free tier limit is reached, preventing API key suspension.
 
 ## Useful commands
 

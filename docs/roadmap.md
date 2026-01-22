@@ -55,11 +55,11 @@
 
 ### Redis Rescan Pipeline (NEW)
 - [x] Redis integration (go-redis)
-- [x] Config: `redis.url`, `chains.*.internal_code`, `chains.*.rescan_ranges`
-- [x] Queue consumer: `missing_blocks:<internal_code>` (ZSET)
+- [x] Config: `redis.url`, `chains.*.id`, `chains.*.rescan_ranges`
+- [x] Queue consumer: `missing_blocks:<id>` (ZSET)
 - [x] Range merge/split logic (chunk_size: 5-500 blocks)
-- [x] Processing lock: `processing:<internal_code>:<range>` with TTL
-- [x] Progress tracking: `processed:<internal_code>:<range>`
+- [x] Processing lock: `processing:<id>:<range>` with TTL
+- [x] Progress tracking: `processed:<id>:<range>`
 - [x] Re-queue remaining subrange on timeout/interruption
 - [x] Multi-instance safe (locks prevent double work)
 - [x] CLI flag: `--rescan-ranges=true|false`
