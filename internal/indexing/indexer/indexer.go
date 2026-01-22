@@ -10,6 +10,7 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/filter"
 	"github.com/vietddude/watcher/internal/indexing/recovery"
 	"github.com/vietddude/watcher/internal/indexing/reorg"
+	"github.com/vietddude/watcher/internal/indexing/throttle"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/storage"
 )
@@ -45,6 +46,10 @@ type Config struct {
 	// Settings
 	ScanInterval time.Duration
 	BatchSize    int
+
+	// Adaptive throttling (optional)
+	Controller *throttle.AdaptiveController
+	HeadCache  *throttle.HeadCache
 }
 
 // Status represents the current state of the indexer

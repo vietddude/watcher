@@ -217,6 +217,84 @@ func (a *EVMAdapter) GetFinalityDepth() uint64   { return a.finalityBlocks }
 func (a *EVMAdapter) GetChainID() domain.ChainID { return a.chainID }
 func (a *EVMAdapter) SupportsBloomFilter() bool  { return true }
 
+// GetBlockRange fetches multiple blocks in a single batch RPC call.
+// This significantly reduces API costs when catching up or processing multiple blocks.
+func (a *EVMAdapter) GetBlockRange(ctx context.Context, from, to uint64) ([]*domain.Block, error) {
+	count := int(to - from + 1)
+	if count <= 0 {
+		return nil, fmt.Errorf("invalid range: from=%d, to=%d", from, to)
+	}
+
+	// Build batch requests
+	requests := make([]rpc.BatchRequest, count)
+	for i := 0; i < count; i++ {
+		blockNum := from + uint64(i)
+		requests[i] = rpc.BatchRequest{
+			Method: "eth_getBlockByNumber",
+			Params: []any{fmt.Sprintf("0x%x", blockNum), false}, // false = don't include txs
+		}
+	}
+
+	// Execute batch call
+	rpcProvider, ok := a.client.(rpc.RPCProvider)
+	if !ok {
+		// Fallback to sequential calls if provider doesn't support batch
+		return a.getBlockRangeSequential(ctx, from, to)
+	}
+
+	responses, err := rpcProvider.BatchCall(ctx, requests)
+	if err != nil {
+		return nil, fmt.Errorf("batch call failed: %w", err)
+	}
+
+	// Parse responses
+	blocks := make([]*domain.Block, count)
+	for i, resp := range responses {
+		if resp.Error != nil {
+			// Individual block error - mark as nil (missing/future block)
+			slog.Debug("block not found in batch", "blockNum", from+uint64(i), "error", resp.Error)
+			blocks[i] = nil
+			continue
+		}
+
+		if resp.Result == nil {
+			blocks[i] = nil
+			continue
+		}
+
+		blockData, ok := resp.Result.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("invalid block format at index %d", i)
+		}
+
+		block, err := a.parseBlock(blockData)
+		if err != nil {
+			return nil, fmt.Errorf("parse block at index %d: %w", i, err)
+		}
+
+		blocks[i] = block
+	}
+
+	return blocks, nil
+}
+
+// getBlockRangeSequential is a fallback for providers that don't support batch calls
+func (a *EVMAdapter) getBlockRangeSequential(ctx context.Context, from, to uint64) ([]*domain.Block, error) {
+	count := int(to - from + 1)
+	blocks := make([]*domain.Block, count)
+
+	for i := 0; i < count; i++ {
+		blockNum := from + uint64(i)
+		block, err := a.GetBlock(ctx, blockNum)
+		if err != nil {
+			return nil, fmt.Errorf("get block %d: %w", blockNum, err)
+		}
+		blocks[i] = block
+	}
+
+	return blocks, nil
+}
+
 func (a *EVMAdapter) parseBlock(data map[string]any) (*domain.Block, error) {
 	number, err := parseHexString(data["number"].(string))
 	if err != nil {

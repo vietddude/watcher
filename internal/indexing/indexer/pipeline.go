@@ -34,9 +34,56 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	}
 	defer p.running.Store(false)
 
-	ticker := time.NewTicker(p.cfg.ScanInterval)
-	defer ticker.Stop()
+	// Use dynamic timer if adaptive controller is available
+	var timer *time.Timer
+	if p.cfg.Controller != nil {
+		timer = time.NewTimer(p.cfg.ScanInterval)
+	} else {
+		// Fallback to static ticker
+		ticker := time.NewTicker(p.cfg.ScanInterval)
+		defer ticker.Stop()
+		return p.runWithStaticTicker(ctx, ticker)
+	}
+	defer timer.Stop()
 
+	// Start background head monitor
+	go p.monitorChainHead(ctx)
+
+	// Process immediately on startup, then use dynamic timer
+	for {
+		shouldContinue, err := p.processNextBlock(ctx)
+		if err != nil {
+			slog.Error("Block processing error", "error", err)
+			time.Sleep(time.Second)
+		} else if shouldContinue {
+			// Burst mode: don't wait for timer
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-p.stop:
+				return nil
+			default:
+				continue
+			}
+		}
+
+		// Compute next interval based on current lag
+		interval := p.computeNextInterval(ctx)
+		timer.Reset(interval)
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-p.stop:
+			return nil
+		case <-timer.C:
+			// Continue to next iteration
+		}
+	}
+}
+
+// runWithStaticTicker is the fallback when adaptive controller is not available
+func (p *Pipeline) runWithStaticTicker(ctx context.Context, ticker *time.Ticker) error {
 	// Start background head monitor
 	go p.monitorChainHead(ctx)
 
@@ -67,6 +114,43 @@ func (p *Pipeline) Start(ctx context.Context) error {
 			// Continue to next iteration
 		}
 	}
+}
+
+// computeNextInterval calculates the next scan interval based on current lag
+func (p *Pipeline) computeNextInterval(ctx context.Context) time.Duration {
+	if p.cfg.Controller == nil {
+		return p.cfg.ScanInterval
+	}
+
+	// Get current cursor
+	cursor, err := p.cfg.Cursor.Get(ctx, p.cfg.ChainID)
+	if err != nil || cursor == nil {
+		return p.cfg.ScanInterval
+	}
+
+	// Get latest block (use cache if available)
+	var latestBlock uint64
+	if p.cfg.HeadCache != nil {
+		latestBlock, err = p.cfg.HeadCache.GetLatestBlock(ctx)
+	} else {
+		latestBlock, err = p.cfg.ChainAdapter.GetLatestBlock(ctx)
+	}
+	if err != nil {
+		return p.cfg.ScanInterval
+	}
+
+	// Compute lag
+	lag := int64(latestBlock) - int64(cursor.BlockNumber)
+
+	// Compute optimal interval
+	interval := p.cfg.Controller.ComputeInterval(lag)
+
+	// Update metrics
+	chainName, _ := domain.ChainNameFromID(p.cfg.ChainID)
+	metrics.AdaptiveScanIntervalSeconds.WithLabelValues(chainName).Set(interval.Seconds())
+	metrics.ChainLag.WithLabelValues(chainName).Set(float64(lag))
+
+	return interval
 }
 
 // Stop stops the pipeline

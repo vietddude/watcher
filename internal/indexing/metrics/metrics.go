@@ -187,4 +187,31 @@ var (
 		},
 		[]string{"chain"},
 	)
+
+	// AdaptiveScanIntervalSeconds tracks the current adaptive scan interval
+	AdaptiveScanIntervalSeconds = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_adaptive_scan_interval_seconds",
+			Help: "Current adaptive scan interval in seconds",
+		},
+		[]string{"chain"},
+	)
+
+	// AdaptiveBatchSize tracks the current adaptive batch size
+	AdaptiveBatchSize = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "watcher_adaptive_batch_size",
+			Help: "Current adaptive batch size for block fetching",
+		},
+		[]string{"chain"},
+	)
+
+	// AdaptiveAdjustmentsTotal tracks total number of throttle adjustments
+	AdaptiveAdjustmentsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_adaptive_adjustments_total",
+			Help: "Total number of adaptive throttle adjustments",
+		},
+		[]string{"chain", "type", "direction"}, // type: interval/batch, direction: up/down
+	)
 )

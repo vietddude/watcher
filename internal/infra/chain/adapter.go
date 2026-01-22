@@ -56,3 +56,13 @@ type PreFilterAdapter interface {
 		addresses []string,
 	) (bool, error)
 }
+
+// BatchAdapter is an optional interface for adapters that support batch block fetching.
+// Chains that implement this can fetch multiple blocks in a single RPC call, significantly
+// reducing API costs when catching up or processing multiple blocks.
+type BatchAdapter interface {
+	// GetBlockRange fetches blocks from `from` to `to` (inclusive) in a single batch RPC call.
+	// Returns a slice of blocks in order. nil entries indicate missing or future blocks.
+	// This is particularly useful for EVM chains that support eth_batch requests.
+	GetBlockRange(ctx context.Context, from, to uint64) ([]*domain.Block, error)
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/recovery"
 	"github.com/vietddude/watcher/internal/indexing/reorg"
 	"github.com/vietddude/watcher/internal/indexing/rescan"
+	"github.com/vietddude/watcher/internal/indexing/throttle"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/chain/bitcoin"
 	"github.com/vietddude/watcher/internal/infra/chain/evm"
@@ -247,6 +248,39 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		baseEmitter := &emitter.LogEmitter{}
 		finalityEmitter := emitter.NewFinalityBuffer(baseEmitter, chainCfg.FinalityBlocks)
 
+		// Initialize Adaptive Throttling (if configured)
+		var controller *throttle.AdaptiveController
+		var headCache *throttle.HeadCache
+		if chainCfg.AdaptiveThrottling != nil && chainCfg.AdaptiveThrottling.Enabled {
+			// Build adaptive config from chain config
+			adaptiveCfg := throttle.DefaultConfig()
+			if chainCfg.AdaptiveThrottling.MinScanInterval > 0 {
+				adaptiveCfg.MinScanInterval = chainCfg.AdaptiveThrottling.MinScanInterval
+			}
+			if chainCfg.AdaptiveThrottling.MaxScanInterval > 0 {
+				adaptiveCfg.MaxScanInterval = chainCfg.AdaptiveThrottling.MaxScanInterval
+			}
+			if chainCfg.AdaptiveThrottling.HeadCacheTTL > 0 {
+				adaptiveCfg.HeadCacheTTL = chainCfg.AdaptiveThrottling.HeadCacheTTL
+			}
+			if chainCfg.AdaptiveThrottling.MaxBatchSize > 0 {
+				adaptiveCfg.MaxBatchSize = chainCfg.AdaptiveThrottling.MaxBatchSize
+			}
+			if chainCfg.AdaptiveThrottling.LagBurstThreshold > 0 {
+				adaptiveCfg.LagBurstThreshold = chainCfg.AdaptiveThrottling.LagBurstThreshold
+			}
+			adaptiveCfg.BatchEnabled = chainCfg.AdaptiveThrottling.BatchEnabled
+
+			controller = throttle.NewAdaptiveController(
+				chainID,
+				chainCfg.ScanInterval,
+				adaptiveCfg,
+			)
+			headCache = throttle.NewHeadCache(adapter, adaptiveCfg.HeadCacheTTL)
+
+			slog.Info("Adaptive throttling enabled", "chain", chainID)
+		}
+
 		// 5. Create Indexer Pipeline
 		idxCfg := indexer.Config{
 			ChainID:         domain.ChainID(chainID),
@@ -262,6 +296,8 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 			TransactionRepo: txRepo,
 			ScanInterval:    chainCfg.ScanInterval,
 			BatchSize:       10,
+			Controller:      controller,
+			HeadCache:       headCache,
 		}
 
 		pipeline := indexer.NewPipeline(idxCfg)

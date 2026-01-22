@@ -36,6 +36,15 @@ chains:
     providers:
       - name: "public"
         url: "https://ethereum-rpc.publicnode.com"
+    # Adaptive throttling (optional) - reduces API costs by 70-90%
+    adaptive_throttling:
+      enabled: true
+      min_scan_interval: "500ms"      # Fastest polling rate
+      max_scan_interval: "60s"        # Slowest polling rate
+      head_cache_ttl: "3s"            # Cache GetLatestBlock for 3s
+      batch_enabled: true             # Enable batch block fetching (EVM only)
+      max_batch_size: 20              # Fetch up to 20 blocks per API call
+      lag_burst_threshold: 50         # Use max batch when 50+ blocks behind
   
   - id: "137"
     type: "evm"
@@ -56,3 +65,4 @@ chains:
     providers:
       - name: "public"
         url: "https://fullnode.testnet.sui.io:443"
+    
