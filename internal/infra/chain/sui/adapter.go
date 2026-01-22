@@ -17,38 +17,150 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
+// Executor defines the interface required for executing RPC operations
+type Executor interface {
+	Execute(ctx context.Context, op rpc.Operation) (any, error)
+}
+
 // Adapter implements chain.Adapter for Sui using gRPC
 type Adapter struct {
-	client  rpc.RPCClient
+	client  Executor
 	chainID domain.ChainID
 
 	// Single-slot cache for the current block being processed
 	mu               sync.RWMutex
 	cachedCheckpoint *suipb.Checkpoint
 
-	// Parallel Prefetching
-	prefetchMu      sync.Mutex
-	prefetchBuffer  map[uint64]*suipb.Checkpoint
-	prefetchLoading map[uint64]chan struct{} // channel to wait for ongoing fetches
+	// Streaming support
+	streamMu           sync.RWMutex
+	streamHeight       uint64
+	streamBuffer       map[uint64]*suipb.Checkpoint
+	streamDisconnected bool
 }
 
-const prefetchWindow = 5
+const (
+	streamBufSize = 100
+)
 
 // Ensure Adapter implements chain.Adapter
 var _ chain.Adapter = (*Adapter)(nil)
 
 // NewAdapter creates a new Sui adapter
-func NewAdapter(chainID domain.ChainID, client rpc.RPCClient) *Adapter {
-	return &Adapter{
-		client:          client,
-		chainID:         chainID,
-		prefetchBuffer:  make(map[uint64]*suipb.Checkpoint),
-		prefetchLoading: make(map[uint64]chan struct{}),
+func NewAdapter(chainID domain.ChainID, client Executor) *Adapter {
+	a := &Adapter{
+		client:       client,
+		chainID:      chainID,
+		streamBuffer: make(map[uint64]*suipb.Checkpoint),
+	}
+
+	// Start streaming in background (fire and forget for now, as lifecycle is app-bound)
+	go a.startStreaming(context.Background())
+
+	return a
+}
+
+func (a *Adapter) startStreaming(ctx context.Context) {
+	for {
+		err := a.subscribe(ctx)
+		if err != nil {
+			a.streamMu.Lock()
+			a.streamDisconnected = true
+			a.streamMu.Unlock()
+			// Backoff before reconnecting
+			time.Sleep(5 * time.Second)
+		}
+	}
+}
+
+func (a *Adapter) subscribe(ctx context.Context) error {
+	op := rpc.NewGRPCOperation(
+		"SubscribeCheckpoints",
+		func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
+			mask, err := fieldmaskpb.New(
+				&suipb.SubscribeCheckpointsResponse{},
+				"checkpoint.sequence_number",
+				"checkpoint.digest",
+				"checkpoint.summary",
+				"checkpoint.transactions",
+			)
+			if err != nil {
+				return nil, err
+			}
+			req := &suipb.SubscribeCheckpointsRequest{
+				ReadMask: mask,
+			}
+			return suipb.NewSubscriptionServiceClient(conn).SubscribeCheckpoints(ctx, req)
+		},
+	)
+
+	res, err := a.client.Execute(ctx, op)
+	if err != nil {
+		return fmt.Errorf("subscribe failed: %w", err)
+	}
+
+	stream, ok := res.(grpc.ServerStreamingClient[suipb.SubscribeCheckpointsResponse])
+	if !ok {
+		return fmt.Errorf("invalid response type: %T", res)
+	}
+
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+
+		// Public nodes often return empty checkpoint details but provide the sequence number in the cursor.
+		// We prioritize using the cursor to track the latest block height (streamHeight) for low latency.
+		cursor := resp.GetCursor()
+
+		checkpoint := resp.Checkpoint
+		seq := uint64(0)
+		if checkpoint != nil {
+			seq = checkpoint.GetSequenceNumber()
+		}
+
+		// If explicit sequence number is missing (0), fallback to cursor
+		if seq == 0 {
+			seq = cursor
+		}
+
+		if seq > 0 {
+			a.streamMu.Lock()
+			a.streamDisconnected = false
+			if seq > a.streamHeight {
+				a.streamHeight = seq
+			}
+
+			// Only cache if we have actual checkpoint data (digest is a good indicator)
+			if checkpoint != nil && checkpoint.GetDigest() != "" {
+				a.streamBuffer[seq] = checkpoint
+				// Prune old buffer
+				if len(a.streamBuffer) > streamBufSize {
+					for k := range a.streamBuffer {
+						if k < seq-streamBufSize {
+							delete(a.streamBuffer, k)
+						}
+					}
+				}
+			}
+			a.streamMu.Unlock()
+		}
 	}
 }
 
 // GetLatestBlock returns the latest checkpoint sequence number
 func (a *Adapter) GetLatestBlock(ctx context.Context) (uint64, error) {
+	// 1. Unconditionally try to use stream height if healthy
+	a.streamMu.RLock()
+	height := a.streamHeight
+	disconnected := a.streamDisconnected
+	a.streamMu.RUnlock()
+
+	if height > 0 && !disconnected {
+		return height, nil
+	}
+
+	// 2. Fallback to RPC
 	op := rpc.NewGRPCOperation(
 		"GetServiceInfo",
 		func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
@@ -75,7 +187,19 @@ func (a *Adapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 
 // GetBlock returns a block by number (lightweight)
 func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
-	// 1. Check current cache (in case of re-requests)
+	// 1. Check Stream Buffer first
+	a.streamMu.RLock()
+	if cp, ok := a.streamBuffer[blockNumber]; ok {
+		// Verify if it has enough data (e.g. Digest)
+		// If Digest is empty (as seen in test), treat as cache miss to force fetch
+		if cp.GetDigest() != "" {
+			a.streamMu.RUnlock()
+			return a.mapCheckpointToBlock(cp)
+		}
+	}
+	a.streamMu.RUnlock()
+
+	// 2. Check current cache (in case of re-requests)
 	a.mu.RLock()
 	if a.cachedCheckpoint != nil && a.cachedCheckpoint.GetSequenceNumber() == blockNumber {
 		defer a.mu.RUnlock()
@@ -83,55 +207,54 @@ func (a *Adapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Blo
 	}
 	a.mu.RUnlock()
 
-	// 2. Check Prefetch Buffer
-	var cp *suipb.Checkpoint
-	a.prefetchMu.Lock()
-	if cached, ok := a.prefetchBuffer[blockNumber]; ok {
-		cp = cached
-		delete(a.prefetchBuffer, blockNumber)
-		a.prefetchMu.Unlock()
-	} else if waitCh, loading := a.prefetchLoading[blockNumber]; loading {
-		// Ongoing fetch - wait for it
-		a.prefetchMu.Unlock()
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-waitCh:
-			// Recurse to pick up from buffer
-			return a.GetBlock(ctx, blockNumber)
+	// 3. Cache miss - Fetch Manually
+	// Optimization: Try to fetch immediately. If it fails (node lagging behind stream),
+	// wait briefly and retry once. This avoids penalizing the happy path.
+
+	// Attempt 1: Immediate
+	cp, err := a.fetchCheckpoint(ctx, blockNumber)
+
+	// If error is NotFound or similar, and we believe it exists (<= streamHeight), try waiting
+	if err != nil {
+		a.streamMu.RLock()
+		streamTip := a.streamHeight
+		a.streamMu.RUnlock()
+
+		// Only retry if the stream says this block SHOULD exist
+		if streamTip > 0 && blockNumber <= streamTip {
+			// Check if error is related to not found (simple check for now, can be improved)
+			// For generic robustnees, we'll try once more after a delay for ANY error
+			// in this critical "tip" zone.
+			time.Sleep(500 * time.Millisecond)
+			var retryErr error
+			cp, retryErr = a.fetchCheckpoint(ctx, blockNumber)
+			if retryErr == nil {
+				err = nil // Recovered
+			}
+			// If retryErr != nil, we return the original or retry error
 		}
-	} else {
-		a.prefetchMu.Unlock()
-		// Cache miss - Fetch Manually
-		var err error
-		cp, err = a.fetchCheckpoint(ctx, blockNumber)
-		if err != nil {
-			return nil, err
-		}
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	if cp == nil {
 		return nil, nil
 	}
 
-	// 3. Update current cache
+	// 4. Update current cache
 	a.mu.Lock()
 	a.cachedCheckpoint = cp
 	a.mu.Unlock()
 
-	// 4. Trigger next prefetch window if buffer is getting low
-	a.prefetchMu.Lock()
-	bufferedCount := len(a.prefetchBuffer)
-	a.prefetchMu.Unlock()
-
-	if bufferedCount < prefetchWindow/2 {
-		go a.prefetch(blockNumber + 1)
-	}
-
 	return a.mapCheckpointToBlock(cp)
 }
 
-func (a *Adapter) fetchCheckpoint(ctx context.Context, blockNumber uint64) (*suipb.Checkpoint, error) {
+func (a *Adapter) fetchCheckpoint(
+	ctx context.Context,
+	blockNumber uint64,
+) (*suipb.Checkpoint, error) {
 	op := rpc.NewGRPCOperation(
 		"GetCheckpoint",
 		func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
@@ -168,58 +291,6 @@ func (a *Adapter) fetchCheckpoint(ctx context.Context, blockNumber uint64) (*sui
 		return nil, fmt.Errorf("invalid response type: %T", res)
 	}
 	return resp.Checkpoint, nil
-}
-
-func (a *Adapter) prefetch(start uint64) {
-	for i := uint64(0); i < prefetchWindow; i++ {
-		num := start + i
-
-		a.prefetchMu.Lock()
-		if _, exists := a.prefetchBuffer[num]; exists {
-			a.prefetchMu.Unlock()
-			continue
-		}
-		if _, loading := a.prefetchLoading[num]; loading {
-			a.prefetchMu.Unlock()
-			continue
-		}
-
-		// Start prefetch
-		waitCh := make(chan struct{})
-		a.prefetchLoading[num] = waitCh
-		a.prefetchMu.Unlock()
-
-		go func(n uint64, ch chan struct{}) {
-			defer close(ch)
-			defer func() {
-				a.prefetchMu.Lock()
-				delete(a.prefetchLoading, n)
-				a.prefetchMu.Unlock()
-			}()
-
-			// Background context for prefetching
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			cp, err := a.fetchCheckpoint(ctx, n)
-			if err == nil && cp != nil {
-				a.prefetchMu.Lock()
-				a.prefetchBuffer[n] = cp
-				// Cleanup old buffer if it gets too large
-				if len(a.prefetchBuffer) > prefetchWindow*2 {
-					for k := range a.prefetchBuffer {
-						if k < n-prefetchWindow {
-							delete(a.prefetchBuffer, k)
-						}
-					}
-				}
-				a.prefetchMu.Unlock()
-			}
-		}(num, waitCh)
-
-		// More conservative delay to avoid hitting rate limits on public nodes
-		time.Sleep(200 * time.Millisecond)
-	}
 }
 
 // GetBlockByHash returns a block by digest
