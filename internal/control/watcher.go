@@ -159,7 +159,15 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 				// Use GRPC Provider
 				grpcProvider, err := rpc.NewGRPCProvider(context.Background(), p.Name, p.URL)
 				if err != nil {
-					slog.Error("Failed to initialize GRPC provider", "chain", chainID, "provider", p.Name, "error", err)
+					slog.Error(
+						"Failed to initialize GRPC provider",
+						"chain",
+						chainID,
+						"provider",
+						p.Name,
+						"error",
+						err,
+					)
 					continue
 				}
 				router.AddProvider(chainID, grpcProvider)

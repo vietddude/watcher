@@ -246,11 +246,27 @@ func (r *DefaultRouter) RecordFailure(providerName string, err error) {
 		metrics.consecutiveFails++
 	}
 
-	slog.Warn("Provider call failed", "provider", providerName, "consecutive", metrics.consecutiveFails, "error", err, "isNotFound", isNotFound)
+	slog.Warn(
+		"Provider call failed",
+		"provider",
+		providerName,
+		"consecutive",
+		metrics.consecutiveFails,
+		"error",
+		err,
+		"isNotFound",
+		isNotFound,
+	)
 
 	if metrics.consecutiveFails >= 5 {
 		metrics.circuitOpen = true
-		slog.Error("Provider circuit opened", "provider", providerName, "consecutive", metrics.consecutiveFails)
+		slog.Error(
+			"Provider circuit opened",
+			"provider",
+			providerName,
+			"consecutive",
+			metrics.consecutiveFails,
+		)
 	}
 }
 

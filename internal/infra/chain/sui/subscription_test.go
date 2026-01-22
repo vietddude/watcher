@@ -70,7 +70,12 @@ func TestSubscribeCheckpoints(t *testing.T) {
 				t.Logf("Warning: Received sequence number 0. Cursor: %d", cursor)
 			}
 			if cursor > 0 {
-				t.Logf("Success: Received Cursor %d (SequenceNumber: %d, Transactions: %d)", cursor, seq, len(checkpoint.GetTransactions()))
+				t.Logf(
+					"Success: Received Cursor %d (SequenceNumber: %d, Transactions: %d)",
+					cursor,
+					seq,
+					len(checkpoint.GetTransactions()),
+				)
 			}
 
 			if checkpoint.GetDigest() != "" {
@@ -82,7 +87,10 @@ func TestSubscribeCheckpoints(t *testing.T) {
 			if len(checkpoint.GetTransactions()) > 0 {
 				t.Logf("Transactions Count: %d", len(checkpoint.GetTransactions()))
 				if len(checkpoint.GetTransactions()) > 0 {
-					t.Logf("Sample Transaction Digest: %s", checkpoint.GetTransactions()[0].GetTransaction().GetDigest())
+					t.Logf(
+						"Sample Transaction Digest: %s",
+						checkpoint.GetTransactions()[0].GetTransaction().GetDigest(),
+					)
 				}
 			}
 

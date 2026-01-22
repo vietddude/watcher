@@ -106,7 +106,8 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 				metrics.ChainLatestBlock.WithLabelValues(chainName).Set(float64(latestHeight))
 				metrics.ChainLag.WithLabelValues(chainName).Set(float64(lag))
 				if cursor != nil {
-					metrics.IndexerLatestBlock.WithLabelValues(chainName).Set(float64(cursor.BlockNumber))
+					metrics.IndexerLatestBlock.WithLabelValues(chainName).
+						Set(float64(cursor.BlockNumber))
 				}
 
 				// Performance Suggestion
@@ -187,7 +188,13 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 							}
 
 							if err := m.missingRepo.Add(ctx, missing); err != nil {
-								slog.Error("Failed to queue backfill task", "chain", chainID, "error", err)
+								slog.Error(
+									"Failed to queue backfill task",
+									"chain",
+									chainID,
+									"error",
+									err,
+								)
 							} else {
 								slog.Info("Queued backfill task", "chain", chainID, "range", fmt.Sprintf("%d-%d", gapFrom, gapTo))
 

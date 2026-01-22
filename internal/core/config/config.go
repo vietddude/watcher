@@ -42,9 +42,9 @@ type ChainConfig struct {
 
 // ProviderConfig holds settings for an RPC provider.
 type ProviderConfig struct {
-	Name             string `yaml:"name"        mapstructure:"name"`
-	URL              string `yaml:"url"         mapstructure:"url"`
-	DailyQuota       int    `yaml:"daily_quota"      mapstructure:"daily_quota"` // 0 = unlimited
-	IntervalLimit    int    `yaml:"interval_limit"   mapstructure:"interval_limit"`
+	Name             string `yaml:"name"              mapstructure:"name"`
+	URL              string `yaml:"url"               mapstructure:"url"`
+	DailyQuota       int    `yaml:"daily_quota"       mapstructure:"daily_quota"` // 0 = unlimited
+	IntervalLimit    int    `yaml:"interval_limit"    mapstructure:"interval_limit"`
 	IntervalDuration string `yaml:"interval_duration" mapstructure:"interval_duration"`
 }
