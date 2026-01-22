@@ -29,9 +29,7 @@ type Indexer interface {
 // Config holds all dependencies for the pipeline
 type Config struct {
 	ChainID      domain.ChainID
-	InternalCode string
-	ChainName    string // e.g. "SUI_TEST"
-	ChainType    string // e.g. "sui" or "evm"
+	ChainType    domain.ChainType // e.g. "sui" or "evm"
 	ChainAdapter chain.Adapter
 	Cursor       cursor.Manager
 	Reorg        *reorg.Detector

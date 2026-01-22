@@ -180,8 +180,8 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	}
 
 	// Record metrics
-	metrics.BlocksProcessed.WithLabelValues(p.cfg.ChainName).Inc()
-	metrics.IndexerLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(targetBlockNum))
+	metrics.BlocksProcessed.WithLabelValues(string(p.cfg.ChainID)).Inc()
+	metrics.IndexerLatestBlock.WithLabelValues(string(p.cfg.ChainID)).Set(float64(targetBlockNum))
 
 	// 5. Filter Transactions using bloom filter
 	var relevantTxs []*domain.Transaction
@@ -194,8 +194,8 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	// Metrics
 	relevantCount := float64(len(relevantTxs))
 	filteredCount := float64(len(txs) - len(relevantTxs))
-	metrics.TransactionsProcessed.WithLabelValues(p.cfg.ChainName).Add(relevantCount)
-	metrics.TransactionsFiltered.WithLabelValues(p.cfg.ChainName).Add(filteredCount)
+	metrics.TransactionsProcessed.WithLabelValues(string(p.cfg.ChainID)).Add(relevantCount)
+	metrics.TransactionsFiltered.WithLabelValues(string(p.cfg.ChainID)).Add(filteredCount)
 
 	// 6. Enrich matched transactions with receipt data (gas used, status)
 	for _, tx := range relevantTxs {
@@ -292,10 +292,10 @@ func (p *Pipeline) monitorChainHead(ctx context.Context) {
 		case <-ticker.C:
 			latest, err := p.cfg.ChainAdapter.GetLatestBlock(ctx)
 			if err != nil {
-				slog.Error("Failed to fetch chain head", "chain", p.cfg.ChainName, "error", err)
+				slog.Error("Failed to fetch chain head", "chain", p.cfg.ChainID, "error", err)
 				continue
 			}
-			metrics.ChainLatestBlock.WithLabelValues(p.cfg.ChainName).Set(float64(latest))
+			metrics.ChainLatestBlock.WithLabelValues(string(p.cfg.ChainID)).Set(float64(latest))
 		}
 	}
 }

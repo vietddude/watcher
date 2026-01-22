@@ -8,48 +8,36 @@ func (c ChainID) String() string {
 	return string(c)
 }
 
+type ChainType string
+
 const (
-	// Chain IDs
-	EthereumMainnet ChainID = "1"
-	PolygonMainnet  ChainID = "137"
-	SuiTestnet      ChainID = "784"
-	SuiMainnet      ChainID = "101"
+	ChainTypeEVM     ChainType = "evm"
+	ChainTypeSui     ChainType = "sui"
+	ChainTypeBitcoin ChainType = "bitcoin"
+	ChainTypeTron    ChainType = "tron"
 )
 
 const (
-	// Internal Chain Codes
-	EthereumCode   = "ETHEREUM_MAINNET"
-	PolygonCode    = "POLYGON_MAINNET"
-	SuiTestCode    = "SUI_TESTNET"
-	SuiMainnetCode = "SUI_MAINNET"
+	EthereumMainnet ChainID = "ETHEREUM_MAINNET"
+	PolygonMainnet  ChainID = "POLYGON_MAINNET"
+	SuiTestnet      ChainID = "SUI_TESTNET"
+	SuiMainnet      ChainID = "SUI_MAINNET"
+	BitcoinMainnet  ChainID = "BITCOIN_MAINNET"
 )
 
-var chainIDToCode = map[ChainID]string{
-	EthereumMainnet: EthereumCode,
-	PolygonMainnet:  PolygonCode,
-	SuiTestnet:      SuiTestCode,
-	SuiMainnet:      SuiMainnetCode,
-}
-
-var chainCodeToID = map[string]ChainID{
-	EthereumCode:   EthereumMainnet,
-	PolygonCode:    PolygonMainnet,
-	SuiTestCode:    SuiTestnet,
-	SuiMainnetCode: SuiMainnet,
-}
-
+// ChainNameFromID now just returns the string representation of the ID
+// since we use descriptive internal codes as IDs.
 func ChainNameFromID(id ChainID) (string, error) {
-	code, ok := chainIDToCode[id]
-	if !ok {
-		return "", fmt.Errorf("unknown chain id: %s", id)
+	if id == "" {
+		return "", fmt.Errorf("empty chain id")
 	}
-	return code, nil
+	return string(id), nil
 }
 
+// ChainIDFromCode is now an identity function since code == ID.
 func ChainIDFromCode(code string) (ChainID, error) {
-	id, ok := chainCodeToID[code]
-	if !ok {
-		return "", fmt.Errorf("unknown chain code: %s", code)
+	if code == "" {
+		return "", fmt.Errorf("empty chain code")
 	}
-	return id, nil
+	return ChainID(code), nil
 }

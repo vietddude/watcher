@@ -238,7 +238,8 @@ func (r *DefaultRouter) RecordFailure(providerName string, err error) {
 	isNotFound := false
 	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
 		isNotFound = true
-	} else if strings.Contains(strings.ToLower(err.Error()), "not found") {
+	} else if strings.Contains(strings.ToLower(err.Error()), "not found") ||
+		strings.Contains(strings.ToLower(err.Error()), "out of range") {
 		isNotFound = true
 	}
 
@@ -246,17 +247,32 @@ func (r *DefaultRouter) RecordFailure(providerName string, err error) {
 		metrics.consecutiveFails++
 	}
 
-	slog.Warn(
-		"Provider call failed",
-		"provider",
-		providerName,
-		"consecutive",
-		metrics.consecutiveFails,
-		"error",
-		err,
-		"isNotFound",
-		isNotFound,
-	)
+	logMsg := "Provider call failed"
+	if isNotFound {
+		slog.Debug(
+			logMsg,
+			"provider",
+			providerName,
+			"consecutive",
+			metrics.consecutiveFails,
+			"error",
+			err,
+			"isNotFound",
+			isNotFound,
+		)
+	} else {
+		slog.Warn(
+			logMsg,
+			"provider",
+			providerName,
+			"consecutive",
+			metrics.consecutiveFails,
+			"error",
+			err,
+			"isNotFound",
+			isNotFound,
+		)
+	}
 
 	if metrics.consecutiveFails >= 5 {
 		metrics.circuitOpen = true

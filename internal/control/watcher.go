@@ -19,6 +19,7 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/reorg"
 	"github.com/vietddude/watcher/internal/indexing/rescan"
 	"github.com/vietddude/watcher/internal/infra/chain"
+	"github.com/vietddude/watcher/internal/infra/chain/bitcoin"
 	"github.com/vietddude/watcher/internal/infra/chain/evm"
 	"github.com/vietddude/watcher/internal/infra/chain/sui"
 	redisclient "github.com/vietddude/watcher/internal/infra/redis"
@@ -154,8 +155,8 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 		hasActiveProvider := false
 		for _, p := range chainCfg.Providers {
-			// Check if this is a sui chain to use GRPC provider
-			if chainCfg.Type == "sui" {
+			switch chainCfg.Type {
+			case domain.ChainTypeSui:
 				// Use GRPC Provider
 				grpcProvider, err := rpc.NewGRPCProvider(context.Background(), p.Name, p.URL)
 				if err != nil {
@@ -172,7 +173,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 				}
 				router.AddProvider(chainID, grpcProvider)
 				hasActiveProvider = true
-			} else {
+			default:
 				// Use HTTP Provider (EVM default)
 				rpcProvider := rpc.NewHTTPProvider(
 					p.Name,
@@ -198,13 +199,16 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		)
 		coordinators[chainID] = coordinator
 
-		// Use EVM adapter by default with CoordinatedProvider
 		var adapter chain.Adapter
-		if chainCfg.Type == "sui" {
+		switch chainCfg.Type {
+		case domain.ChainTypeSui:
 			// Use the coordinated provider (which wraps generic providers)
 			// The Sui Client now accepts a rpc.Provider
 			adapter = sui.NewAdapter(chainID, coordinatedProvider)
-		} else {
+		case domain.ChainTypeBitcoin:
+			adapter = bitcoin.NewBitcoinAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
+		default:
+			// Use EVM adapter by default
 			adapter = evm.NewEVMAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
 		}
 		fetcher.adapters[chainID] = adapter
@@ -246,7 +250,6 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		// 5. Create Indexer Pipeline
 		idxCfg := indexer.Config{
 			ChainID:         domain.ChainID(chainID),
-			ChainName:       chainCfg.InternalCode,
 			ChainType:       chainCfg.Type,
 			ChainAdapter:    adapter,
 			Cursor:          cursorMgr,
@@ -301,10 +304,10 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 		} else {
 			// Initialize rescan workers for chains with rescan_ranges enabled
 			for _, chainCfg := range cfg.Chains {
-				if chainCfg.RescanRanges && chainCfg.InternalCode != "" {
+				if chainCfg.RescanRanges {
 					worker := rescan.NewWorker(
 						rescan.DefaultConfig(),
-						chainCfg.InternalCode,
+						string(chainCfg.ChainID),
 						redisClient,
 						fetcher.adapters[chainCfg.ChainID],
 						blockRepo,

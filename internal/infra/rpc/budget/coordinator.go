@@ -3,6 +3,7 @@ package budget
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,7 +105,7 @@ func (c *Coordinator) GetBestProvider(chainID domain.ChainID) (provider.Provider
 	return best.provider, nil
 }
 
-func (c *Coordinator) scoreProvider(chainID domain.ChainID, p provider.Provider) (float64, string) {
+func (c *Coordinator) scoreProvider(_ domain.ChainID, p provider.Provider) (float64, string) {
 	score := 100.0
 	var reasons []string
 
@@ -326,7 +327,7 @@ func (c *Coordinator) Call(
 		}
 	}
 
-	return nil, fmt.Errorf("call failed after %d failovers: %w", MaxFailoverAttempts, lastErr)
+	return nil, fmt.Errorf("call %s failed after %d failovers: %w", method, MaxFailoverAttempts, lastErr)
 }
 
 // Execute performs an operation with coordinated budget checking and failover.
@@ -372,6 +373,21 @@ func (c *Coordinator) Execute(
 		lastErr = err
 
 		// Check if we should failover
+		// Optimization: Do NOT failover immediately for "Not Found" errors
+		// These are expected when polling the tip
+		if routing.ClassifyError(err) == routing.ActionFatal {
+			return nil, err
+		}
+
+		isNotFound := false
+		if strings.Contains(strings.ToLower(err.Error()), "not found") ||
+			strings.Contains(strings.ToLower(err.Error()), "out of range") {
+			isNotFound = true
+		}
+
+		if isNotFound {
+			return nil, err // Return immediately to avoid failover burst
+		}
 		if attempt < MaxFailoverAttempts-1 {
 			// Rotate to next provider
 			nextP, rotErr := c.ForceRotate(chainID, p.GetName())
@@ -382,7 +398,7 @@ func (c *Coordinator) Execute(
 		}
 	}
 
-	return nil, fmt.Errorf("execute failed after %d failovers: %w", MaxFailoverAttempts, lastErr)
+	return nil, fmt.Errorf("execute %s failed after %d failovers: %w", op.Name, MaxFailoverAttempts, lastErr)
 }
 
 // CallWithCoordination is deprecated. Use Call instead.

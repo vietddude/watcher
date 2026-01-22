@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	logger "log/slog"
 
@@ -51,6 +52,10 @@ func (a *BitcoinAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*dom
 	opHash := rpc.NewJSONRPC10Operation("getblockhash", blockNumber)
 	hashResult, err := a.client.Execute(ctx, opHash)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "out of range") ||
+			strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to get block hash: %w", err)
 	}
 
@@ -163,6 +168,10 @@ func (a *BitcoinAdapter) VerifyBlockHash(
 	op := rpc.NewJSONRPC10Operation("getblockhash", blockNumber)
 	hashResult, err := a.client.Execute(ctx, op)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "out of range") ||
+			strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return false, nil
+		}
 		return false, err
 	}
 
@@ -172,6 +181,11 @@ func (a *BitcoinAdapter) VerifyBlockHash(
 	}
 
 	return actualHash == expectedHash, nil
+}
+
+func (a *BitcoinAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
+	// Bitcoin transactions are already "enriched" during GetTransactions (verbosity 2)
+	return nil
 }
 
 func (a *BitcoinAdapter) GetFinalityDepth() uint64 {

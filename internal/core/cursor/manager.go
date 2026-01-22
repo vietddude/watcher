@@ -114,6 +114,9 @@ func (m *DefaultManager) Advance(
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
 	}
+	if cursor == nil {
+		return ErrCursorNotFound
+	}
 
 	// Validate state allows advancement
 	switch cursor.State {
@@ -205,6 +208,9 @@ func (m *DefaultManager) Jump(
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
 	}
+	if cursor == nil {
+		return ErrCursorNotFound
+	}
 
 	// Validate state allows movement
 	switch cursor.State {
@@ -235,6 +241,9 @@ func (m *DefaultManager) SetState(
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
+	}
+	if cursor == nil {
+		return ErrCursorNotFound
 	}
 
 	// Validate transition
@@ -281,6 +290,9 @@ func (m *DefaultManager) Rollback(
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
 	}
+	if cursor == nil {
+		return ErrCursorNotFound
+	}
 
 	// Transition to REORG state if not already
 	if cursor.State != domain.CursorStateReorg {
@@ -325,6 +337,9 @@ func (m *DefaultManager) Resume(ctx context.Context, chainID domain.ChainID) err
 	if err != nil {
 		return fmt.Errorf("failed to get cursor: %w", err)
 	}
+	if cursor == nil {
+		return ErrCursorNotFound
+	}
 
 	// Resume to scanning state
 	if cursor.State != domain.CursorStatePaused {
@@ -343,6 +358,10 @@ func (m *DefaultManager) GetLag(
 	cursor, err := m.repo.Get(ctx, chainID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get cursor: %w", err)
+	}
+	if cursor == nil {
+		// If cursor not found, lag is total height (from 0)
+		return int64(latestBlock), nil
 	}
 
 	return int64(latestBlock) - int64(cursor.BlockNumber), nil
