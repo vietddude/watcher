@@ -4,6 +4,16 @@
 
 The **Watcher** is a modular, event-driven indexing system. It assumes the role of a "Control Plane" orchestrating data flow from blockchains to your application's storage or event bus.
 
+### Simplified Overview
+
+```text
+[RPC Providers] → [Watcher] → [PostgreSQL]
+                      ↓
+                [Prometheus/Grafana]
+```
+
+### Detailed Flow
+
 ```mermaid
 graph TD
     User[User/App] --> API[Control Plane API]
@@ -15,6 +25,7 @@ graph TD
         Pipeline --> Filter[Filter Engine]
         Pipeline --> Reorg[Reorg Detector]
         Pipeline --> Cursor[Cursor Manager]
+        Pipeline --> Throttler[Adaptive Throttler]
     end
     
     subgraph "Storage Layer"
@@ -29,7 +40,7 @@ graph TD
     end
     
     Adapter --> Coordinator[RPC Coordinator]
-    Coordinator --> RPC[Blockchain Node(s)]
+    Coordinator --> RPC[Blockchain Node]
 ```
 
 ## 2. Component Design
@@ -40,20 +51,28 @@ graph TD
 
 ### Indexing Pipeline (`internal/indexing/indexer/pipeline.go`)
 The heart of the system. Runs in a loop:
-1.  **Fetch**: Get next block via `ChainAdapter`.
-2.  **Reorg Check**: Verify parent hash consistency.
-3.  **Process**:
+1.  **Adaptive Wait**: Computes next `ScanInterval` and `BatchSize` based on chain lag via `AdaptiveController`.
+2.  **Fetch**: Get next block (or range) via `ChainAdapter`. Supports `BatchAdapter` for multi-block fetching.
+3.  **Reorg Check**: Verify parent hash consistency.
+4.  **Process**:
     - Extract Transactions.
     - **Filter**: Check against `WalletAddress` Bloom Filter.
     - Emit events (`Emitter`).
-4.  **Commit**: Update Cursor (`CursorRepo`) and persist data (`BlockRepo`, `TxRepo`).
+5.  **Commit**: Update Cursor (`CursorRepo`) and persist data (`BlockRepo`, `TxRepo`).
+
+### Adaptive Throttling (`internal/indexing/throttle`)
+- **AdaptiveController**: Dynamically adjusts polling frequency and batch sizes.
+    - **Interval Scaling**: Decreases wait time when lag is high.
+    - **Batch Scaling**: Increases blocks-per-request when behind.
+- **HeadCache**: Minimizes `eth_blockNumber` calls by caching the chain tip across multiple indexers.
 
 ### RPC Management (`internal/infra/rpc`)
-- **Coordinator**: Orchestrates operations across providers.
-- **Providers (`internal/infra/rpc/provider`)**: Pluggable implementations for HTTP and gRPC.
+- **Coordinator**: Orchestrates operations across providers. Handles proactive rotation when quota is near threshold.
+- **Providers (`internal/infra/rpc/provider`)**: Pluggable implementations for HTTP (JSON-RPC) and **gRPC** (Sui).
 - **Router (`internal/infra/rpc/routing`)**: Smart routing logic based on health, latency, and budget.
 - **Budget (`internal/infra/rpc/budget`)**: Tracks method limitations and daily quotas.
 - **Operations**: Abstracted RPC calls enabling unified handling of JSON-RPC and gRPC.
+- **Batching**: Support for `BatchAdapter` allows fetching multiple block headers in one roundtrip.
 
 ### Data Models (`internal/core/domain`)
 - **Block**: Normalized block header.
@@ -112,3 +131,9 @@ To optimize storage and processing, the Watcher uses a filtering mechanism:
         - `chain/`: Chain-specific adapters (EVM, Sui, Tron, Bitcoin).
 - `migrations/`: SQL schemas (Goose).
 - `docs/`: Architecture and design docs.
+
+## 7. Additional Documentation
+
+- [Monitoring Guide](./monitoring.md) - Metrics and Dashboards.
+- [Troubleshooting](./troubleshooting.md) - FAQ and Common Issues.
+- [Roadmap](./roadmap.md) - Future features and improvements.

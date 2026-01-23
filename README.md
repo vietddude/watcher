@@ -7,6 +7,13 @@ It only pulls **what you actually care about**, and it tries very hard to **not 
 
 If your RPC is flaky, rate-limited, or slow - Watcher assumes that’s normal.
 
+## Architecture
+
+```text
+[RPC Providers] → [Watcher] → [PostgreSQL]
+                      ↓
+                [Prometheus/Grafana]
+```
 
 ## Why Watcher exists
 
@@ -82,64 +89,111 @@ Watcher is designed around those constraints.
 Watcher is meant to be **backend infrastructure**, not a data warehouse.
 
 
-## Quick start
 
-### 1. Start dependencies
+## Installation
 
+### Requirements
+- **Go 1.25+** (as specified in `go.mod`)
+- **Docker & Docker Compose**
+- **PostgreSQL 15+**
+
+### Steps
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/vietddude/watcher.git
+   cd watcher
+   ```
+
+2. **Setup Configuration**
+   ```bash
+   cp config.example.yaml config.yaml
+   # Edit config.yaml with your RPC providers and database credentials
+   ```
+
+3. **Start Dependencies**
+   Watcher requires PostgreSQL and Prometheus/Grafana (optional but recommended).
+   ```bash
+   make docker-up
+   ```
+
+4. **Run Migrations**
+   ```bash
+   make migrate-up
+   ```
+
+5. **Build and Install**
+   ```bash
+   make build
+   # Optional: move to bin
+   # cp bin/watcher /usr/local/bin/
+   ```
+
+## Quick Start (Docker Compose)
+If you want to run everything via Docker:
 ```bash
-make docker-up
+docker-compose up -d
 ```
 
-### 2. Config (config.yaml)
-
-```yaml
-chains:
-  - id: "ETHEREUM_MAINNET"
-    type: "evm"
-    scan_interval: 12s
-    finality_blocks: 12
-    providers:
-      - name: "public"
-        url: "https://ethereum-rpc.publicnode.com"
-        daily_quota: 100000
-
-database:
-  url: "postgres://watcher:watcher123@localhost:5432/watcher?sslmode=disable"
-```
-
-### 3. Run
-
+## Manual Run
+Once configured and built:
 ```bash
+./bin/watcher
+# or
 make run
 ```
 
+## Performance
+
+Watcher is designed to be extremely lightweight and efficient with RPC credits.
+
+| Chain    | RPC calls/block | Backfill speed | RAM usage |
+|----------|-----------------|----------------|-----------|
+| Ethereum | ~1-3            | ~60 blocks/min | ~200MB    |
+| BSC      | ~1-2            | ~120 blocks/min| ~150MB    |
+| Sui      | ~1 (gRPC)       | ~200 events/min| ~180MB    |
+
+*Note: RPC calls per block vary based on whether the chain supports `PreFilter` (logs/event filtering).*
+
+## Monitoring
+
+Watcher exposes a Prometheus `/metrics` endpoint and a `/health` endpoint on the configured `port`.
+
+### Available Metrics
+- `watcher_chain_lag`: Number of blocks the indexer is behind chain head.
+- `watcher_rpc_calls_total`: Total RPC requests sent, labeled by provider and method.
+- `watcher_rpc_quota_remaining`: Daily quota remaining per provider.
+- `watcher_reorgs_detected_total`: Total chain reorganizations handled.
+- `watcher_db_query_latency_seconds`: Latency of database operations.
+
+### Grafana Dashboard
+A pre-configured Grafana dashboard is available in `monitoring/grafana/dashboards/watcher.json`.
+
+### Alerts Example
+Prometheus alert rules are provided in `monitoring/alerts.yml`. Example alerts:
+- **IndexerFallingBehind**: Alerts if lag > 100 blocks.
+- **ProviderHighErrorRate**: Alerts if an RPC provider fails > 10% of requests.
+- **QuotaNearExhaustion**: Alerts if < 10% of daily quota remains.
+
+## Data Consumption
+
+Watcher does not provide a built-in REST API for querying blocks. Instead, application developers should query the **PostgreSQL** database directly.
+
+### Core Tables
+- `blocks`: Contains indexed block headers.
+- `transactions`: Contains filtered transactions that matched your monitored addresses.
+- `cursors`: Stores the current sync progress for each chain.
+
+See [Database Schema](migrations/00001_init_schema.sql) for details.
+
+## Troubleshooting
+
+See the [Troubleshooting Guide](docs/troubleshooting.md) for FAQs on:
+- Handling RPC downtime
+- Re-indexing from a specific block
+- Debugging performance issues
+
 ## Configuration Guide
-
-To ensure Watcher runs reliably, you must configure each chain correctly in `config.yaml`:
-
-### 1. Chain ID (`id`)
-Use descriptive identifiers instead of numbers (e.g., `BITCOIN_MAINNET` instead of `0`). This serves as the unique key for storing cursors in the database.
-
-### 2. Chain Type (`type`)
-Watcher supports four main chain architectures:
-*   `evm`: For Ethereum, BSC, Polygon, Arbitrum, etc.
-*   `bitcoin`: For the Bitcoin network (uses JSON-RPC 1.0).
-*   `sui`: For the Sui network (uses gRPC).
-*   `tron`: For the Tron network (uses REST).
-
-### 3. Scan Interval (`scan_interval`)
-The delay between new block polls.
-*   **EVM/Sui**: Recommended `5s` - `12s` due to fast block times.
-*   **Bitcoin**: Recommended `1m` - `10m`. Since Bitcoin averages 10-minute block times, polling too frequently will result in repetitive "Out of range" logs.
-
-### 4. Finality Blocks (`finality_blocks`)
-The number of confirmation blocks required to safely avoid reorgs.
-*   Ethereum: `12`
-*   Bitcoin: `6`
-*   Polygon: `32` (suggested for higher safety)
-
-### 5. Providers
-Multiple providers can be defined for failover support. Use `daily_quota` to ensure Watcher automatically stops using a provider once its free tier limit is reached, preventing API key suspension.
 
 ## Useful commands
 

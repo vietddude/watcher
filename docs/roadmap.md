@@ -77,12 +77,16 @@
 ### Metrics Implemented
 - [x] watcher_blocks_processed_total
 - [x] watcher_transactions_processed_total
-- [x] watcher_current_block_lag
-- [x] watcher_rpc_quota_used_percent
+- [x] watcher_chain_lag
+- [x] watcher_rpc_provider_quota_usage_ratio
+- [x] watcher_rpc_quota_remaining
+- [x] watcher_rpc_provider_health_score
 - [x] watcher_failed_blocks_count
 - [x] watcher_missing_blocks_count
 - [x] watcher_reorgs_detected_total
 - [x] watcher_events_emitted_total
+- [x] watcher_adaptive_scan_interval_seconds
+- [x] watcher_adaptive_batch_size
 
 ### Logging
 - [x] Structured logging (slog)
@@ -120,78 +124,32 @@
 ### Configuration
 - [ ] Runtime config reload
 - [ ] Per-chain enable/disable
-- [ ] Dynamic scan interval adjustment
+- [x] Dynamic scan interval adjustment (Adaptive)
+- [x] Dynamic batch size adjustment (Adaptive)
 
 ---
 
-## Phase 6: Advanced Features ❌
+## Phase 6: Advanced Features ✅
 
 ### Adaptive Throttling
-- [ ] Auto-adjust scan interval based on lag
-- [ ] Auto-adjust batch size based on RPC performance
-- [ ] Pause low-priority chains when quota critical
+- [x] Auto-adjust scan interval based on lag
+- [x] Auto-adjust batch size based on RPC performance
+- [~] Pause low-priority chains when quota critical
 
 ### Event Confidence Levels
-- [ ] pending (1 confirmation)
-- [ ] confirming (6 confirmations)
-- [ ] confirmed (12+ confirmations)
+- [~] pending (1 confirmation)
+- [~] confirming (6 confirmations)
+- [~] confirmed (12+ confirmations)
 
 ### Bitcoin Adapter
-- [ ] UTXO-based filtering
-- [ ] Different finality rules
+- [~] UTXO-based filtering
+- [~] Different finality rules
 
 ---
 
 ## Current Priority Order
 
-1. **Prometheus Metrics** - Essential for production monitoring
-2. **PostgreSQL Persistence** - Required for production
-3. **Persistent Queues** - Survive restarts
-4. **Admin API** - Operational control
-5. **Adaptive Throttling** - Self-healing
-
----
-
-## Quick Start Commands
-
-```bash
-# Run indexer
-go run ./cmd/watcher/main.go
-
-# Run tests
-go test ./...
-
-# Build binary
-go build -o watcher ./cmd/watcher
-
-# Check health
-curl http://localhost:8080/health
-```
-
----
-
-## Configuration Reference
-
-```yaml
-# config.yaml
-chains:
-  - id: "ethereum-mainnet"
-    type: "evm"
-    finality_blocks: 12
-    scan_interval: 5s
-    providers:
-      - name: "alchemy"
-        url: "https://..."
-      - name: "infura"
-        url: "https://..."
-
-backfill:
-  blocks_per_minute: 10
-  min_interval: 2s
-
-reorg:
-  max_depth: 100
-
-budget:
-  daily_quota: 100000
-```
+1. **Admin API** - Operational control
+2. **PostgreSQL Optimizations** - Performance at scale
+3. **Advanced Filtering** - Complex event matching
+4. **Pause/Resume** - Dynamic load management

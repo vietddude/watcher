@@ -9,6 +9,10 @@ build:
 	@echo "Building $(BINARY_NAME)..."
 	@go build -o bin/$(BINARY_NAME) ./cmd/watcher
 
+install: build
+	@echo "Installing $(BINARY_NAME) to $(GOPATH)/bin..."
+	@cp bin/$(BINARY_NAME) $(shell go env GOPATH)/bin/
+
 run: build
 	@echo "Running $(BINARY_NAME)..."
 	@./bin/$(BINARY_NAME)
@@ -45,6 +49,7 @@ migrate-down:
 help:
 	@echo "Available commands:"
 	@echo "  make build         - Build the application"
+	@echo "  make install       - Build and install to GOPATH/bin"
 	@echo "  make run           - Build and run the application"
 	@echo "  make test          - Run tests"
 	@echo "  make clean         - Clean build artifacts"
