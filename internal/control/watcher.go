@@ -179,7 +179,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 				rpcProvider := rpc.NewHTTPProvider(
 					p.Name,
 					p.URL,
-					10*time.Second,
+					5*time.Second, // Reduced timeout for faster failover
 				)
 				router.AddProvider(chainID, rpcProvider)
 				hasActiveProvider = true
@@ -229,7 +229,8 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 			missingRepo,
 			func(chainID domain.ChainID, blockNum uint64) error {
 				// Re-use adapter to fetch block
-				block, err := adapter.GetBlock(context.Background(), blockNum)
+				ctx := context.Background()
+				block, err := adapter.GetBlock(ctx, blockNum)
 				if err != nil {
 					return err
 				}
@@ -238,7 +239,32 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 				}
 				// Ensure ChainID is set
 				block.ChainID = domain.ChainID(chainID)
-				return blockRepo.Save(context.Background(), block)
+				if err := blockRepo.Save(ctx, block); err != nil {
+					return err
+				}
+
+				// Also fetch and save relevant transactions for backfilled blocks
+				txs, err := adapter.GetTransactions(ctx, block)
+				if err != nil {
+					slog.Warn("Failed to fetch transactions for backfill block", "chain", chainID, "block", blockNum, "error", err)
+					return nil // Don't fail backfill just because tx fetch failed
+				}
+
+				var relevantTxs []*domain.Transaction
+				for _, tx := range txs {
+					if simpleFilter.Contains(tx.From) || simpleFilter.Contains(tx.To) {
+						tx.ChainID = block.ChainID
+						relevantTxs = append(relevantTxs, tx)
+					}
+				}
+
+				if len(relevantTxs) > 0 {
+					if err := txRepo.SaveBatch(ctx, relevantTxs); err != nil {
+						slog.Warn("Failed to save transactions for backfill block", "chain", chainID, "block", blockNum, "error", err)
+					}
+				}
+
+				return nil
 			},
 		)
 		bfProcessor.SetBudgetTracker(budgetTracker)

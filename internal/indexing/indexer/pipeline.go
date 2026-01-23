@@ -288,9 +288,17 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	metrics.TransactionsFiltered.WithLabelValues(string(p.cfg.ChainID)).Add(filteredCount)
 
 	// 6. Enrich matched transactions with receipt data (gas used, status)
-	for _, tx := range relevantTxs {
-		if err := p.cfg.ChainAdapter.EnrichTransaction(ctx, tx); err != nil {
-			slog.Warn("Failed to enrich transaction", "tx", tx.Hash, "error", err)
+	if batchAdapter, ok := p.cfg.ChainAdapter.(chain.BatchEnrichAdapter); ok {
+		// Use optimized batch enrichment
+		if err := batchAdapter.EnrichTransactions(ctx, relevantTxs); err != nil {
+			slog.Warn("Failed to batch enrich transactions", "error", err)
+		}
+	} else {
+		// Fallback to sequential
+		for _, tx := range relevantTxs {
+			if err := p.cfg.ChainAdapter.EnrichTransaction(ctx, tx); err != nil {
+				slog.Warn("Failed to enrich transaction", "tx", tx.Hash, "error", err)
+			}
 		}
 	}
 
@@ -346,7 +354,16 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	if err := p.cfg.BlockRepo.UpdateStatus(ctx, p.cfg.ChainID, block.Number, domain.BlockStatusProcessed); err != nil {
 		slog.Warn("Failed to update block status", "block", block.Number, "error", err)
 	}
-	// TODO: Save Transactions (Batch)
+
+	// Save Transactions (Batch)
+	if len(relevantTxs) > 0 {
+		for _, tx := range relevantTxs {
+			tx.ChainID = p.cfg.ChainID
+		}
+		if err = p.cfg.TransactionRepo.SaveBatch(ctx, relevantTxs); err != nil {
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save transactions failed: %w", err))
+		}
+	}
 
 	// 8. Update Cursor
 	// Advance cursor to this block

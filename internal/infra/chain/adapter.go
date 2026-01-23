@@ -66,3 +66,9 @@ type BatchAdapter interface {
 	// This is particularly useful for EVM chains that support eth_batch requests.
 	GetBlockRange(ctx context.Context, from, to uint64) ([]*domain.Block, error)
 }
+
+// BatchEnrichAdapter is an optional interface for adapters that support batch transaction enrichment.
+type BatchEnrichAdapter interface {
+	// EnrichTransactions enriches multiple transactions in a single batch operation.
+	EnrichTransactions(ctx context.Context, txs []*domain.Transaction) error
+}

@@ -3,6 +3,8 @@ INSERT INTO transactions (
     chain_id,
     tx_hash,
     block_number,
+    block_hash,
+    tx_index,
     from_address,
     to_address,
     value,
@@ -10,9 +12,10 @@ INSERT INTO transactions (
     gas_price,
     status,
     block_timestamp,
+    raw_data,
     created_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 ) ON CONFLICT (chain_id, tx_hash, block_number) DO NOTHING;
 
 -- name: GetTransactionByHash :one

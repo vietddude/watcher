@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sqlc-dev/pqtype"
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/infra/storage/postgres/sqlc"
 )
@@ -22,10 +23,21 @@ func NewTxRepo(db *DB) *TxRepo {
 
 // Save saves a transaction to the database.
 func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
+	if tx.ChainID == "" {
+		return fmt.Errorf("transaction missing chain ID")
+	}
+
+	blockHash := tx.BlockHash
+	if blockHash == "" {
+		blockHash = "0x" // Safe default to avoid NULL constraint violation
+	}
+
 	err := r.db.Queries.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 		ChainID:        string(tx.ChainID),
 		TxHash:         tx.Hash,
 		BlockNumber:    int64(tx.BlockNumber),
+		BlockHash:      blockHash,
+		TxIndex:        int32(tx.Index),
 		FromAddress:    tx.From,
 		ToAddress:      sql.NullString{String: tx.To, Valid: tx.To != ""},
 		Value:          sql.NullString{String: tx.Value, Valid: tx.Value != ""},
@@ -34,6 +46,7 @@ func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
 		Status:         sql.NullString{String: string(tx.Status), Valid: string(tx.Status) != ""},
 		CreatedAt:      sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
 		BlockTimestamp: int64(tx.Timestamp),
+		RawData:        pqtype.NullRawMessage{RawMessage: tx.RawData, Valid: len(tx.RawData) > 0},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to save transaction: %w", err)
@@ -57,10 +70,17 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 	qtx := r.db.Queries.WithTx(tx)
 
 	for _, t := range txs {
+		blockHash := t.BlockHash
+		if blockHash == "" {
+			blockHash = "0x"
+		}
+
 		err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
 			ChainID:        string(t.ChainID),
 			TxHash:         t.Hash,
 			BlockNumber:    int64(t.BlockNumber),
+			BlockHash:      blockHash,
+			TxIndex:        int32(t.Index),
 			FromAddress:    t.From,
 			ToAddress:      sql.NullString{String: t.To, Valid: t.To != ""},
 			Value:          sql.NullString{String: t.Value, Valid: t.Value != ""},
@@ -69,6 +89,7 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 			Status:         sql.NullString{String: string(t.Status), Valid: string(t.Status) != ""},
 			CreatedAt:      sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
 			BlockTimestamp: int64(t.Timestamp),
+			RawData:        pqtype.NullRawMessage{RawMessage: t.RawData, Valid: len(t.RawData) > 0},
 		})
 		if err != nil {
 			return err
@@ -152,6 +173,8 @@ func (r *TxRepo) toDomain(row sqlc.Transaction) *domain.Transaction {
 		ChainID:     domain.ChainID(row.ChainID),
 		Hash:        row.TxHash,
 		BlockNumber: uint64(row.BlockNumber),
+		BlockHash:   row.BlockHash,
+		Index:       int(row.TxIndex),
 		From:        row.FromAddress,
 		To:          row.ToAddress.String,
 		Value:       row.Value.String,

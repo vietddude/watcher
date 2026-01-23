@@ -2,6 +2,7 @@ package sui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -385,22 +386,21 @@ func (a *Adapter) GetTransactions(
 	}
 
 	var txs []*domain.Transaction
-	for _, execTx := range cp.GetTransactions() {
+	for i, execTx := range cp.GetTransactions() {
 		tx := a.mapTransaction(execTx, block)
+		tx.Index = i
 		txs = append(txs, tx)
 	}
 
 	return txs, nil
 }
 
-// FilterTransactions filters transactions based on sender (Sui optimization)
+// FilterTransactions filters transactions based on sender or any recipient.
 func (a *Adapter) FilterTransactions(
 	ctx context.Context,
 	txs []*domain.Transaction,
 	addresses []string,
 ) ([]*domain.Transaction, error) {
-	// Filter transactions in-memory.
-
 	addressSet := make(map[string]bool)
 	for _, addr := range addresses {
 		addressSet[addr] = true
@@ -408,9 +408,34 @@ func (a *Adapter) FilterTransactions(
 
 	var filtered []*domain.Transaction
 	for _, tx := range txs {
-		if addressSet[tx.From] || addressSet[tx.To] {
+		// 1. Check Sender
+		if addressSet[tx.From] {
+			filtered = append(filtered, tx)
+			continue
+		}
+
+		// 2. Check Recipients from RawData
+		if len(tx.RawData) > 0 {
+			var recipients []string
+			if err := json.Unmarshal(tx.RawData, &recipients); err == nil {
+				for _, r := range recipients {
+					if addressSet[r] {
+						// Overwrite heuristic "To" with the matched monitored address
+						// to ensure it's easily queryable.
+						tx.To = r
+						filtered = append(filtered, tx)
+						goto nextTx
+					}
+				}
+			}
+		}
+
+		// 3. Last resort: check heuristic To (already set in mapTransaction)
+		if tx.To != "" && addressSet[tx.To] {
 			filtered = append(filtered, tx)
 		}
+
+	nextTx:
 	}
 
 	return filtered, nil
@@ -599,20 +624,75 @@ func (a *Adapter) mapTransaction(
 
 	// Map sender
 	sender := ""
+	gasPrice := ""
 	if tx != nil {
 		sender = tx.GetSender()
+		// Extract gas price from GasPayment
+		if tx.GasPayment != nil {
+			gasPrice = fmt.Sprintf("%d", tx.GasPayment.GetPrice())
+		}
 	}
 
-	// "To" address is complex in Sui due to programmable transactions; leaving empty for now.
+	// Heuristical "To" and "Gas"
+	to := ""
+	var recipients []string
+	var gasUsed uint64
+	value := "0"
+
+	if execTx.Effects != nil {
+		// Calculate Gas Used
+		if execTx.Effects.GasUsed != nil {
+			gasUsed = execTx.Effects.GasUsed.GetComputationCost() +
+				execTx.Effects.GasUsed.GetStorageCost()
+		}
+
+		// Extract all recipients (Output Owners)
+		for _, obj := range execTx.Effects.GetChangedObjects() {
+			owner := obj.GetOutputOwner()
+			if owner != nil && owner.GetKind() == suipb.Owner_ADDRESS {
+				addr := owner.GetAddress()
+				if addr != "" && addr != sender {
+					recipients = append(recipients, addr)
+					if to == "" {
+						to = addr
+					}
+				}
+			}
+		}
+	}
+
+	// Extract SUI Value from BalanceChanges
+	// SUI coin type is "0x2::sui::SUI"
+	for _, bc := range execTx.GetBalanceChanges() {
+		coinType := bc.GetCoinType()
+		addr := bc.GetAddress()
+		amountStr := bc.GetAmount()
+
+		// We want the sender's SUI balance change (usually negative = outgoing)
+		if addr == sender && (coinType == "0x2::sui::SUI" || coinType == "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI") {
+			// Remove leading minus sign to get absolute value
+			if len(amountStr) > 0 && amountStr[0] == '-' {
+				value = amountStr[1:]
+			} else {
+				value = amountStr
+			}
+			break
+		}
+	}
+
+	raw, _ := json.Marshal(recipients)
 
 	return &domain.Transaction{
 		Hash:        execTx.GetDigest(),
 		BlockNumber: block.Number,
 		BlockHash:   block.Hash,
 		From:        sender,
-		To:          "",  // Complex to determine "To" in Move
-		Value:       "0", // Value is also complex
+		To:          to,
+		Value:       value,
+		GasUsed:     gasUsed,
+		GasPrice:    gasPrice,
 		Status:      status,
 		Timestamp:   block.Timestamp,
+		RawData:     raw,
 	}
 }

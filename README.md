@@ -151,9 +151,9 @@ Watcher is designed to be extremely lightweight and efficient with RPC credits.
 |----------|-----------------|----------------|-----------|
 | Ethereum | ~1-3            | ~60 blocks/min | ~200MB    |
 | BSC      | ~1-2            | ~120 blocks/min| ~150MB    |
-| Sui      | ~1 (gRPC)       | ~200 events/min| ~180MB    |
+| Sui      | ~2-3 (Hybrid)   | ~3000 seq/min  | ~400MB    |
 
-*Note: RPC calls per block vary based on whether the chain supports `PreFilter` (logs/event filtering).*
+*Note: RPC calls per block vary based on whether the chain supports `PreFilter`. Sui uses gRPC subscriptions for real-time detection but manually fetches checkpoints and effects via RPC.*
 
 ## Monitoring
 

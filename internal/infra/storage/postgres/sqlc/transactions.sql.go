@@ -8,6 +8,8 @@ package sqlc
 import (
 	"context"
 	"database/sql"
+
+	"github.com/sqlc-dev/pqtype"
 )
 
 const createTransaction = `-- name: CreateTransaction :exec
@@ -15,6 +17,8 @@ INSERT INTO transactions (
     chain_id,
     tx_hash,
     block_number,
+    block_hash,
+    tx_index,
     from_address,
     to_address,
     value,
@@ -22,24 +26,28 @@ INSERT INTO transactions (
     gas_price,
     status,
     block_timestamp,
+    raw_data,
     created_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 ) ON CONFLICT (chain_id, tx_hash, block_number) DO NOTHING
 `
 
 type CreateTransactionParams struct {
-	ChainID        string         `db:"chain_id" json:"chain_id"`
-	TxHash         string         `db:"tx_hash" json:"tx_hash"`
-	BlockNumber    int64          `db:"block_number" json:"block_number"`
-	FromAddress    string         `db:"from_address" json:"from_address"`
-	ToAddress      sql.NullString `db:"to_address" json:"to_address"`
-	Value          sql.NullString `db:"value" json:"value"`
-	GasUsed        sql.NullInt64  `db:"gas_used" json:"gas_used"`
-	GasPrice       sql.NullString `db:"gas_price" json:"gas_price"`
-	Status         sql.NullString `db:"status" json:"status"`
-	BlockTimestamp int64          `db:"block_timestamp" json:"block_timestamp"`
-	CreatedAt      sql.NullInt64  `db:"created_at" json:"created_at"`
+	ChainID        string                `db:"chain_id" json:"chain_id"`
+	TxHash         string                `db:"tx_hash" json:"tx_hash"`
+	BlockNumber    int64                 `db:"block_number" json:"block_number"`
+	BlockHash      string                `db:"block_hash" json:"block_hash"`
+	TxIndex        int32                 `db:"tx_index" json:"tx_index"`
+	FromAddress    string                `db:"from_address" json:"from_address"`
+	ToAddress      sql.NullString        `db:"to_address" json:"to_address"`
+	Value          sql.NullString        `db:"value" json:"value"`
+	GasUsed        sql.NullInt64         `db:"gas_used" json:"gas_used"`
+	GasPrice       sql.NullString        `db:"gas_price" json:"gas_price"`
+	Status         sql.NullString        `db:"status" json:"status"`
+	BlockTimestamp int64                 `db:"block_timestamp" json:"block_timestamp"`
+	RawData        pqtype.NullRawMessage `db:"raw_data" json:"raw_data"`
+	CreatedAt      sql.NullInt64         `db:"created_at" json:"created_at"`
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) error {
@@ -47,6 +55,8 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.ChainID,
 		arg.TxHash,
 		arg.BlockNumber,
+		arg.BlockHash,
+		arg.TxIndex,
 		arg.FromAddress,
 		arg.ToAddress,
 		arg.Value,
@@ -54,6 +64,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.GasPrice,
 		arg.Status,
 		arg.BlockTimestamp,
+		arg.RawData,
 		arg.CreatedAt,
 	)
 	return err

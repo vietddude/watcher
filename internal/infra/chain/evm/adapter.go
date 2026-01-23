@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math/big"
 	"strings"
+	"time"
+
+	logger "log/slog"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/filter"
@@ -14,14 +16,13 @@ import (
 )
 
 type EVMAdapter struct {
-	chainID        domain.ChainID
-	client         rpc.RPCClient
-	finalityBlocks uint64
-
-	// filtering
+	chainID         domain.ChainID
+	client          rpc.RPCClient
+	finalityBlocks  uint64
 	bloomFilter     *filter.BloomFilter
 	addressSet      map[string]struct{}
 	lastAddressHash uint64
+	log             logger.Logger
 }
 
 func NewEVMAdapter(
@@ -34,6 +35,8 @@ func NewEVMAdapter(
 		client:         client,
 		finalityBlocks: finalityBlocks,
 		bloomFilter:    filter.NewBloomFilter(),
+		addressSet:     make(map[string]struct{}),
+		log:            *logger.Default(),
 	}
 }
 
@@ -54,27 +57,76 @@ func (a *EVMAdapter) GetLatestBlock(ctx context.Context) (uint64, error) {
 
 func (a *EVMAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.Block, error) {
 	blockHex := fmt.Sprintf("0x%x", blockNumber)
-	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, false})
-
+	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
 	result, err := a.client.Execute(ctx, op)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("eth_getBlockByNumber failed: %w", err)
 	}
 	if result == nil {
-		return nil, nil
+		return nil, nil // Not found/future
 	}
 
-	blockData, ok := result.(map[string]any)
+	rawBlock, ok := result.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid block format")
 	}
 
-	return a.parseBlock(blockData)
+	return a.parseBlock(rawBlock)
+}
+
+func (a *EVMAdapter) parseBlock(raw map[string]any) (*domain.Block, error) {
+	number, _ := parseHexString(getString(raw["number"]))
+	timestamp, _ := parseHexString(getString(raw["timestamp"]))
+
+	return &domain.Block{
+		ChainID:    a.chainID,
+		Number:     number,
+		Hash:       getString(raw["hash"]),
+		ParentHash: getString(raw["parentHash"]),
+		Timestamp:  timestamp,
+		Status:     domain.BlockStatusProcessed, // Default
+	}, nil
 }
 
 func (a *EVMAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*domain.Block, error) {
 	op := rpc.NewHTTPOperation("eth_getBlockByHash", []any{blockHash, false})
+	result, err := a.client.Execute(ctx, op)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, nil
+	}
+	return a.parseBlock(result.(map[string]any))
+}
 
+func (a *EVMAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+	block, err := a.GetBlock(ctx, blockNumber)
+	if err != nil {
+		return false, err
+	}
+	if block == nil {
+		return false, fmt.Errorf("block not found for verification")
+	}
+	return block.Hash == expectedHash, nil
+}
+
+func (a *EVMAdapter) GetFinalityDepth() uint64 {
+	return a.finalityBlocks
+}
+
+func (a *EVMAdapter) GetChainID() domain.ChainID {
+	return a.chainID
+}
+
+func (a *EVMAdapter) SupportsBloomFilter() bool {
+	return true
+}
+
+func (a *EVMAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+	// Re-fetch block with FULL transactions
+	blockHex := fmt.Sprintf("0x%x", block.Number)
+	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
 	result, err := a.client.Execute(ctx, op)
 	if err != nil {
 		return nil, err
@@ -83,47 +135,22 @@ func (a *EVMAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*dom
 		return nil, nil
 	}
 
-	blockData, ok := result.(map[string]any)
+	rawBlock := result.(map[string]any)
+	rawTxs, ok := rawBlock["transactions"].([]any)
 	if !ok {
-		return nil, fmt.Errorf("invalid block format")
-	}
-
-	return a.parseBlock(blockData)
-}
-
-func (a *EVMAdapter) GetTransactions(
-	ctx context.Context,
-	block *domain.Block,
-) ([]*domain.Transaction, error) {
-	blockHex := fmt.Sprintf("0x%x", block.Number)
-	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
-
-	result, err := a.client.Execute(ctx, op)
-	if err != nil {
-		return nil, err
-	}
-
-	blockData, ok := result.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid block format")
-	}
-
-	rawTxs, ok := blockData["transactions"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("invalid transactions format")
+		return []*domain.Transaction{}, nil
 	}
 
 	txs := make([]*domain.Transaction, 0, len(rawTxs))
-	for i, raw := range rawTxs {
-		txData, ok := raw.(map[string]any)
+	for i, txDataRaw := range rawTxs {
+		txData, ok := txDataRaw.(map[string]any)
 		if !ok {
-			slog.Warn("skip invalid tx", "index", i)
 			continue
 		}
 
 		tx, err := a.parseTransaction(txData, block)
 		if err != nil {
-			slog.Warn("parse tx failed", "error", err, "index", i)
+			a.log.Warn("parse tx failed", "error", err, "index", i)
 			continue
 		}
 
@@ -133,33 +160,78 @@ func (a *EVMAdapter) GetTransactions(
 	return txs, nil
 }
 
+func (a *EVMAdapter) parseTransaction(raw map[string]any, block *domain.Block) (*domain.Transaction, error) {
+	txIndex, _ := parseHexString(getString(raw["transactionIndex"]))
+
+	// Ensure raw data is preserved for heuristic filtering
+	rawDataBytes, _ := json.Marshal(raw)
+
+	return &domain.Transaction{
+		ChainID:     a.chainID,
+		Hash:        getString(raw["hash"]),
+		BlockNumber: block.Number,
+		BlockHash:   block.Hash,
+		Index:       int(txIndex),
+		From:        strings.ToLower(getString(raw["from"])),
+		To:          strings.ToLower(getString(raw["to"])),
+		Value:       getString(raw["value"]), // Keep hex
+		GasPrice:    getString(raw["gasPrice"]),
+		Timestamp:   block.Timestamp, // Inherit from block
+		RawData:     rawDataBytes,
+		Status:      domain.TxStatusSuccess, // Default, will be enriched
+	}, nil
+}
+
+// FilterTransactions now filters AFTER enrichment or more intelligently
 func (a *EVMAdapter) FilterTransactions(
 	ctx context.Context,
 	txs []*domain.Transaction,
 	addresses []string,
 ) ([]*domain.Transaction, error) {
-
 	a.ensureAddressIndex(addresses)
-
 	filtered := make([]*domain.Transaction, 0)
 
 	for _, tx := range txs {
-		// fast path
-		if !a.bloomFilter.MayContain(tx.From) && !a.bloomFilter.MayContain(tx.To) {
-			continue
-		}
-
-		// exact match (O(1))
-		if _, ok := a.addressSet[tx.From]; ok {
-			filtered = append(filtered, tx)
-			continue
-		}
-		if _, ok := a.addressSet[tx.To]; ok {
+		if a.isRelevantTransaction(tx) {
 			filtered = append(filtered, tx)
 		}
 	}
 
 	return filtered, nil
+}
+
+// isRelevantTransaction checks if transaction involves monitored addresses
+func (a *EVMAdapter) isRelevantTransaction(tx *domain.Transaction) bool {
+	// Direct from/to match
+	if _, ok := a.addressSet[strings.ToLower(tx.From)]; ok {
+		return true
+	}
+	if _, ok := a.addressSet[strings.ToLower(tx.To)]; ok {
+		return true
+	}
+
+	// Check if RawData contains ERC20 transfer info (after enrichment)
+	var tokenInfo map[string]string
+	if err := json.Unmarshal(tx.RawData, &tokenInfo); err == nil {
+		if tokenInfo["type"] == "ERC20" {
+			// Already marked as relevant during enrichment
+			return true
+		}
+	}
+
+	// Fallback: Check raw input data for address presence
+	txDataStr := strings.ToLower(string(tx.RawData))
+	for addr := range a.addressSet {
+		if len(addr) < 30 {
+			continue
+		}
+		cleanAddr := strings.TrimPrefix(strings.ToLower(addr), "0x")
+		if strings.Contains(txDataStr, cleanAddr) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *EVMAdapter) ensureAddressIndex(addresses []string) {
@@ -170,15 +242,18 @@ func (a *EVMAdapter) ensureAddressIndex(addresses []string) {
 
 	a.bloomFilter.Clear()
 	a.bloomFilter.Build(addresses)
-
 	a.addressSet = make(map[string]struct{}, len(addresses))
+
 	for _, addr := range addresses {
-		a.addressSet[strings.ToLower(addr)] = struct{}{}
+		lower := strings.ToLower(addr)
+		a.addressSet[lower] = struct{}{}
+		a.log.Info("Monitoring address", "address", lower)
 	}
 
 	a.lastAddressHash = h
 }
 
+// EnrichTransaction - FIXED version
 func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transaction) error {
 	op := rpc.NewHTTPOperation("eth_getTransactionReceipt", []any{tx.Hash})
 	result, err := a.client.Execute(ctx, op)
@@ -191,6 +266,83 @@ func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transacti
 		return fmt.Errorf("invalid receipt format")
 	}
 
+	a.processReceipt(tx, receipt)
+	return nil
+}
+
+// EnrichTransactions - batch version
+func (a *EVMAdapter) EnrichTransactions(ctx context.Context, txs []*domain.Transaction) error {
+	if len(txs) == 0 {
+		return nil
+	}
+
+	allRequests := make([]rpc.BatchRequest, len(txs))
+	for i, tx := range txs {
+		allRequests[i] = rpc.BatchRequest{
+			Method: "eth_getTransactionReceipt",
+			Params: []any{tx.Hash},
+		}
+	}
+
+	chunkSize := 5
+	rpcProvider, ok := a.client.(rpc.RPCProvider)
+	if !ok {
+		// Fallback to sequential
+		for _, tx := range txs {
+			if err := a.EnrichTransaction(ctx, tx); err != nil {
+				a.log.Warn("Failed to enrich transaction", "tx", tx.Hash, "error", err)
+			}
+		}
+		return nil
+	}
+
+	for i := 0; i < len(allRequests); i += chunkSize {
+		end := i + chunkSize
+		if end > len(allRequests) {
+			end = len(allRequests)
+		}
+
+		chunk := allRequests[i:end]
+		responses, err := rpcProvider.BatchCall(ctx, chunk)
+		if err != nil {
+			a.log.Warn("batch receipt fetch failed", "chunk_start", i, "error", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		for j, resp := range responses {
+			txIndex := i + j
+			if txIndex >= len(txs) {
+				break
+			}
+
+			tx := txs[txIndex]
+			if resp.Error != nil {
+				a.log.Warn("failed to fetch receipt", "tx", tx.Hash, "error", resp.Error)
+				continue
+			}
+
+			if resp.Result == nil {
+				continue
+			}
+
+			receipt, ok := resp.Result.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			a.processReceipt(tx, receipt)
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	return nil
+}
+
+// processReceipt - FIXED to handle ALL relevant transfers
+func (a *EVMAdapter) processReceipt(tx *domain.Transaction, receipt map[string]any) {
+	// Update gas and status
 	if gu, ok := receipt["gasUsed"].(string); ok {
 		tx.GasUsed, _ = parseHexString(gu)
 	}
@@ -198,158 +350,109 @@ func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transacti
 		tx.Status = domain.TxStatusFailed
 	}
 
-	return nil
-}
-
-func (a *EVMAdapter) VerifyBlockHash(
-	ctx context.Context,
-	blockNumber uint64,
-	expectedHash string,
-) (bool, error) {
-	block, err := a.GetBlock(ctx, blockNumber)
-	if err != nil {
-		return false, err
-	}
-	return strings.EqualFold(block.Hash, expectedHash), nil
-}
-
-func (a *EVMAdapter) GetFinalityDepth() uint64   { return a.finalityBlocks }
-func (a *EVMAdapter) GetChainID() domain.ChainID { return a.chainID }
-func (a *EVMAdapter) SupportsBloomFilter() bool  { return true }
-
-// GetBlockRange fetches multiple blocks in a single batch RPC call.
-// This significantly reduces API costs when catching up or processing multiple blocks.
-func (a *EVMAdapter) GetBlockRange(ctx context.Context, from, to uint64) ([]*domain.Block, error) {
-	count := int(to - from + 1)
-	if count <= 0 {
-		return nil, fmt.Errorf("invalid range: from=%d, to=%d", from, to)
+	logs, ok := receipt["logs"].([]any)
+	if !ok || len(logs) == 0 {
+		return
 	}
 
-	// Build batch requests
-	requests := make([]rpc.BatchRequest, count)
-	for i := 0; i < count; i++ {
-		blockNum := from + uint64(i)
-		requests[i] = rpc.BatchRequest{
-			Method: "eth_getBlockByNumber",
-			Params: []any{fmt.Sprintf("0x%x", blockNum), false}, // false = don't include txs
-		}
-	}
+	// ERC20 Transfer event signature
+	const transferEventSig = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-	// Execute batch call
-	rpcProvider, ok := a.client.(rpc.RPCProvider)
-	if !ok {
-		// Fallback to sequential calls if provider doesn't support batch
-		return a.getBlockRangeSequential(ctx, from, to)
-	}
+	var relevantTransfers []map[string]string
 
-	responses, err := rpcProvider.BatchCall(ctx, requests)
-	if err != nil {
-		return nil, fmt.Errorf("batch call failed: %w", err)
-	}
-
-	// Parse responses
-	blocks := make([]*domain.Block, count)
-	for i, resp := range responses {
-		if resp.Error != nil {
-			// Individual block error - mark as nil (missing/future block)
-			slog.Debug("block not found in batch", "blockNum", from+uint64(i), "error", resp.Error)
-			blocks[i] = nil
-			continue
-		}
-
-		if resp.Result == nil {
-			blocks[i] = nil
-			continue
-		}
-
-		blockData, ok := resp.Result.(map[string]any)
+	for _, logRaw := range logs {
+		logData, ok := logRaw.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("invalid block format at index %d", i)
+			continue
 		}
 
-		block, err := a.parseBlock(blockData)
-		if err != nil {
-			return nil, fmt.Errorf("parse block at index %d: %w", i, err)
+		topics, ok := logData["topics"].([]any)
+		if !ok || len(topics) < 3 {
+			continue
 		}
 
-		blocks[i] = block
-	}
-
-	return blocks, nil
-}
-
-// getBlockRangeSequential is a fallback for providers that don't support batch calls
-func (a *EVMAdapter) getBlockRangeSequential(ctx context.Context, from, to uint64) ([]*domain.Block, error) {
-	count := int(to - from + 1)
-	blocks := make([]*domain.Block, count)
-
-	for i := 0; i < count; i++ {
-		blockNum := from + uint64(i)
-		block, err := a.GetBlock(ctx, blockNum)
-		if err != nil {
-			return nil, fmt.Errorf("get block %d: %w", blockNum, err)
+		topic0, ok := topics[0].(string)
+		if !ok || topic0 != transferEventSig {
+			continue
 		}
-		blocks[i] = block
+
+		// Extract addresses - LOWERCASE IMMEDIATELY
+		fromTopic, _ := topics[1].(string)
+		toTopic, _ := topics[2].(string)
+		tokenContract, _ := logData["address"].(string)
+		dataHex, _ := logData["data"].(string)
+
+		// Parse addresses and normalize
+		tokenFrom := extractAddress(fromTopic)
+		tokenTo := extractAddress(toTopic)
+		tokenContract = strings.ToLower(tokenContract)
+
+		// Check if ANY part involves monitored addresses
+		_, fromMonitored := a.addressSet[tokenFrom]
+		_, toMonitored := a.addressSet[tokenTo]
+		_, contractMonitored := a.addressSet[tokenContract]
+
+		if fromMonitored || toMonitored || contractMonitored {
+			tokenValue := "0"
+			if len(dataHex) > 2 {
+				if parsed, err := parseHexToBigInt(dataHex); err == nil {
+					tokenValue = parsed.String()
+				}
+			}
+
+			transferInfo := map[string]string{
+				"type":     "ERC20",
+				"contract": tokenContract,
+				"from":     tokenFrom,
+				"to":       tokenTo,
+				"value":    tokenValue,
+			}
+
+			relevantTransfers = append(relevantTransfers, transferInfo)
+
+			a.log.Info("Detected ERC20 transfer",
+				"tx", tx.Hash,
+				"contract", tokenContract,
+				"from", tokenFrom,
+				"to", tokenTo,
+				"value", tokenValue,
+			)
+		}
 	}
 
-	return blocks, nil
+	// Store ALL relevant transfers
+	if len(relevantTransfers) > 0 {
+		// If only one transfer, simplify storage
+		if len(relevantTransfers) == 1 {
+			tx.RawData, _ = json.Marshal(relevantTransfers[0])
+			// Update tx fields to reflect the transfer
+			tx.To = relevantTransfers[0]["to"]
+			tx.Value = relevantTransfers[0]["value"]
+		} else {
+			// Multiple transfers - store as array
+			enrichedData := map[string]any{
+				"type":      "ERC20_MULTIPLE",
+				"transfers": relevantTransfers,
+			}
+			tx.RawData, _ = json.Marshal(enrichedData)
+		}
+	}
 }
 
-func (a *EVMAdapter) parseBlock(data map[string]any) (*domain.Block, error) {
-	number, err := parseHexString(data["number"].(string))
-	if err != nil {
-		return nil, err
+// extractAddress normalizes a topic to a checksummed address
+func extractAddress(topic string) string {
+	if len(topic) >= 42 {
+		return strings.ToLower("0x" + topic[len(topic)-40:])
 	}
-
-	block := &domain.Block{
-		ChainID:    a.chainID,
-		Number:     number,
-		Hash:       data["hash"].(string),
-		ParentHash: data["parentHash"].(string),
-		Status:     domain.BlockStatusPending,
-	}
-
-	if ts, ok := data["timestamp"].(string); ok {
-		block.Timestamp, _ = parseHexString(ts)
-	}
-	if _, ok := data["transactions"].([]any); ok {
-		// Optimization: We could store tx count if needed primarily, but field is removed
-	}
-
-	// Metadata removed
-
-	return block, nil
+	return ""
 }
 
-func (a *EVMAdapter) parseTransaction(
-	data map[string]any,
-	block *domain.Block,
-) (*domain.Transaction, error) {
-
-	raw, _ := json.Marshal(data)
-
-	tx := &domain.Transaction{
-		ChainID:     a.chainID,
-		BlockNumber: block.Number,
-		BlockHash:   block.Hash,
-		Hash:        data["hash"].(string),
-		From:        strings.ToLower(data["from"].(string)),
-		To:          strings.ToLower(getString(data["to"])),
-		Value:       getString(data["value"]),
-		GasPrice:    getString(data["gasPrice"]),
-		Status:      domain.TxStatusSuccess,
-		Timestamp:   block.Timestamp,
-		RawData:     raw,
+func parseHexToBigInt(hexStr string) (*big.Int, error) {
+	n := new(big.Int)
+	if _, ok := n.SetString(strings.TrimPrefix(hexStr, "0x"), 16); !ok {
+		return nil, fmt.Errorf("invalid hex: %s", hexStr)
 	}
-
-	if idx, ok := data["transactionIndex"].(string); ok {
-		tx.Index, _ = intFromHex(idx)
-	}
-	if gas, ok := data["gas"].(string); ok {
-		tx.GasUsed, _ = parseHexString(gas)
-	}
-
-	return tx, nil
+	return n, nil
 }
 
 func parseHexString(hexStr string) (uint64, error) {

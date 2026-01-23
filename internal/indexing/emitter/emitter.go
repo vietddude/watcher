@@ -26,7 +26,7 @@ type Emitter interface {
 type LogEmitter struct{}
 
 func (e *LogEmitter) Emit(ctx context.Context, event *domain.Event) error {
-	fmt.Printf("[EVENT] %s: %s (%s)\n", event.ChainID, event.EventType, event.Transaction.Hash)
+	// fmt.Printf("[EVENT] %s: %s (%s)\n", event.ChainID, event.EventType, event.Transaction.Hash)
 	return nil
 }
 func (e *LogEmitter) EmitBatch(ctx context.Context, events []*domain.Event) error {

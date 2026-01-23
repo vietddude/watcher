@@ -221,9 +221,12 @@ func (w *Worker) processBlock(ctx context.Context, blockNum uint64) error {
 	}
 
 	// Save transactions
-	for _, tx := range txs {
-		if err := w.txRepo.Save(ctx, tx); err != nil {
-			w.log.Warn("Failed to save transaction", "tx", tx.Hash, "error", err)
+	if len(txs) > 0 {
+		for _, tx := range txs {
+			tx.ChainID = block.ChainID
+		}
+		if err := w.txRepo.SaveBatch(ctx, txs); err != nil {
+			w.log.Warn("Failed to save transactions batch", "error", err)
 		}
 	}
 
