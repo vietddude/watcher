@@ -118,13 +118,16 @@ func (p *Pipeline) runWithStaticTicker(ctx context.Context, ticker *time.Ticker)
 
 // computeNextInterval calculates the next scan interval based on current lag
 func (p *Pipeline) computeNextInterval(ctx context.Context) time.Duration {
+	chainName, _ := domain.ChainNameFromID(p.cfg.ChainID)
 	if p.cfg.Controller == nil {
+		metrics.AdaptiveBatchSize.WithLabelValues(chainName).Set(float64(p.cfg.BatchSize))
 		return p.cfg.ScanInterval
 	}
 
 	// Get current cursor
 	cursor, err := p.cfg.Cursor.Get(ctx, p.cfg.ChainID)
 	if err != nil || cursor == nil {
+		metrics.AdaptiveBatchSize.WithLabelValues(chainName).Set(float64(p.cfg.BatchSize))
 		return p.cfg.ScanInterval
 	}
 
@@ -145,9 +148,12 @@ func (p *Pipeline) computeNextInterval(ctx context.Context) time.Duration {
 	// Compute optimal interval
 	interval := p.cfg.Controller.ComputeInterval(lag)
 
+	// Compute optimal batch size (pass 0 latency for now as it's not tracked in pipeline)
+	batchSize := p.cfg.Controller.ComputeBatchSize(lag, 0)
+
 	// Update metrics
-	chainName, _ := domain.ChainNameFromID(p.cfg.ChainID)
 	metrics.AdaptiveScanIntervalSeconds.WithLabelValues(chainName).Set(interval.Seconds())
+	metrics.AdaptiveBatchSize.WithLabelValues(chainName).Set(float64(batchSize))
 	metrics.ChainLag.WithLabelValues(chainName).Set(float64(lag))
 
 	return interval

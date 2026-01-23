@@ -110,20 +110,6 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 						Set(float64(cursor.BlockNumber))
 				}
 
-				// Performance Suggestion
-				if lag > 10 && lag <= 100 {
-					if currentInterval, ok := m.scanIntervals[chainID]; ok {
-						suggested := currentInterval / 2
-						slog.Warn("Performance Warning: Indexer is lagging behind chain",
-							"chain", chainID,
-							"lag", lag,
-							"current_interval", currentInterval,
-							"suggested_interval", suggested,
-							"msg", "Consider reducing scan_interval in config.yaml to catch up",
-						)
-					}
-				}
-
 				// [IMPROVED] Intelligent Gap Detection and Auto-Jump
 				// 1. Determine Dynamic Threshold
 				threshold := uint64(1000) // Default: 1000 blocks
