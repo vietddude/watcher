@@ -13,6 +13,7 @@ import (
 	"github.com/vietddude/watcher/internal/indexing/throttle"
 	"github.com/vietddude/watcher/internal/infra/chain"
 	"github.com/vietddude/watcher/internal/infra/storage"
+	"github.com/vietddude/watcher/internal/infra/storage/postgres"
 )
 
 // Indexer is the main orchestrator that coordinates all components
@@ -38,6 +39,9 @@ type Config struct {
 	Recovery     *recovery.Handler
 	Emitter      emitter.Emitter
 	Filter       filter.Filter
+
+	// Database for atomic operations
+	DB *postgres.DB
 
 	// Repositories
 	BlockRepo       storage.BlockRepository

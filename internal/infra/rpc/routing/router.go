@@ -40,10 +40,10 @@ type Router interface {
 	GetAllProviders(chainID domain.ChainID) []provider.Provider
 
 	// RecordSuccess tracks successful calls
-	RecordSuccess(providerName string, latency time.Duration)
+	RecordSuccess(chainID domain.ChainID, providerName string, latency time.Duration)
 
 	// RecordFailure tracks failed calls
-	RecordFailure(providerName string, err error)
+	RecordFailure(chainID domain.ChainID, providerName string, err error)
 }
 
 // BudgetChecker is a minimal interface for budget checking in routing.
@@ -205,7 +205,7 @@ func (r *DefaultRouter) GetAllProviders(chainID domain.ChainID) []provider.Provi
 }
 
 // RecordSuccess records a successful call.
-func (r *DefaultRouter) RecordSuccess(providerName string, latency time.Duration) {
+func (r *DefaultRouter) RecordSuccess(_ domain.ChainID, providerName string, latency time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -222,7 +222,7 @@ func (r *DefaultRouter) RecordSuccess(providerName string, latency time.Duration
 }
 
 // RecordFailure records a failed call.
-func (r *DefaultRouter) RecordFailure(providerName string, err error) {
+func (r *DefaultRouter) RecordFailure(chainID domain.ChainID, providerName string, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -251,6 +251,8 @@ func (r *DefaultRouter) RecordFailure(providerName string, err error) {
 	if isNotFound {
 		slog.Debug(
 			logMsg,
+			"chain",
+			chainID,
 			"provider",
 			providerName,
 			"consecutive",

@@ -12,9 +12,11 @@ type Querier interface {
 	CountFailedBlocks(ctx context.Context, chainID string) (int64, error)
 	CountPendingMissingBlocks(ctx context.Context, chainID string) (int64, error)
 	CreateBlock(ctx context.Context, arg CreateBlockParams) error
+	CreateBlocksBatch(ctx context.Context, arg CreateBlocksBatchParams) error
 	CreateFailedBlock(ctx context.Context, arg CreateFailedBlockParams) error
 	CreateMissingBlock(ctx context.Context, arg CreateMissingBlockParams) error
 	CreateTransaction(ctx context.Context, arg CreateTransactionParams) error
+	CreateTransactionsBatch(ctx context.Context, arg CreateTransactionsBatchParams) error
 	CreateWalletAddress(ctx context.Context, arg CreateWalletAddressParams) error
 	DeleteBlocksInRange(ctx context.Context, arg DeleteBlocksInRangeParams) error
 	DeleteBlocksOlderThan(ctx context.Context, arg DeleteBlocksOlderThanParams) error

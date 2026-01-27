@@ -256,6 +256,41 @@ func (m *mockBlockRepo) DeleteBlocksOlderThan(
 	return nil
 }
 
+// mockTxRepo is a mock transaction repository for testing
+type mockTxRepo struct {
+	saved []*domain.Transaction
+}
+
+func (m *mockTxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
+	m.saved = append(m.saved, tx)
+	return nil
+}
+
+func (m *mockTxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error {
+	m.saved = append(m.saved, txs...)
+	return nil
+}
+
+func (m *mockTxRepo) GetByHash(ctx context.Context, chainID domain.ChainID, txHash string) (*domain.Transaction, error) {
+	return nil, nil
+}
+
+func (m *mockTxRepo) GetByBlock(ctx context.Context, chainID domain.ChainID, blockNumber uint64) ([]*domain.Transaction, error) {
+	return nil, nil
+}
+
+func (m *mockTxRepo) UpdateStatus(ctx context.Context, chainID domain.ChainID, txHash string, status domain.TxStatus) error {
+	return nil
+}
+
+func (m *mockTxRepo) DeleteByBlock(ctx context.Context, chainID domain.ChainID, blockNumber uint64) error {
+	return nil
+}
+
+func (m *mockTxRepo) DeleteTransactionsOlderThan(ctx context.Context, chainID domain.ChainID, timestamp uint64) error {
+	return nil
+}
+
 func TestPipeline_ProcessNextBlock_NormalFlow(t *testing.T) {
 	// Setup Mocks
 	adapter := &mockAdapter{
@@ -277,17 +312,19 @@ func TestPipeline_ProcessNextBlock_NormalFlow(t *testing.T) {
 	cursorMgr := &mockCursorMgr{current: 1000, state: domain.CursorStateScanning}
 	filterMod := &mockFilter{}
 	emitterMod := &mockEmitter{}
+	txRepo := &mockTxRepo{}
 
 	// Setup Config
 	cfg := Config{
-		ChainID:      "ethereum",
-		ChainAdapter: adapter,
-		Cursor:       cursorMgr,
-		Reorg:        reorg.NewDetector(reorg.Config{}, blockRepo),
-		Filter:       filterMod,
-		Emitter:      emitterMod,
-		BlockRepo:    blockRepo,
-		ScanInterval: time.Millisecond,
+		ChainID:         "ethereum",
+		ChainAdapter:    adapter,
+		Cursor:          cursorMgr,
+		Reorg:           reorg.NewDetector(reorg.Config{}, blockRepo),
+		Filter:          filterMod,
+		Emitter:         emitterMod,
+		BlockRepo:       blockRepo,
+		TransactionRepo: txRepo,
+		ScanInterval:    time.Millisecond,
 	}
 
 	pipeline := NewPipeline(cfg)

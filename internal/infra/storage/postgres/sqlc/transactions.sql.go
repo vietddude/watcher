@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/lib/pq"
 	"github.com/sqlc-dev/pqtype"
 )
 
@@ -75,6 +76,76 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.BlockTimestamp,
 		arg.RawData,
 		arg.CreatedAt,
+	)
+	return err
+}
+
+const createTransactionsBatch = `-- name: CreateTransactionsBatch :exec
+INSERT INTO transactions (
+    chain_id, tx_hash, block_number, block_hash, tx_index,
+    from_address, to_address, value, tx_type, token_address,
+    token_amount, gas_used, gas_price, status, block_timestamp, raw_data, created_at
+)
+SELECT
+    unnest($1::varchar[]) AS chain_id,
+    unnest($2::varchar[]) AS tx_hash,
+    unnest($3::bigint[]) AS block_number,
+    unnest($4::varchar[]) AS block_hash,
+    unnest($5::int[]) AS tx_index,
+    unnest($6::varchar[]) AS from_address,
+    unnest($7::varchar[]) AS to_address,
+    unnest($8::varchar[]) AS value,
+    unnest($9::varchar[]) AS tx_type,
+    unnest($10::varchar[]) AS token_address,
+    unnest($11::varchar[]) AS token_amount,
+    unnest($12::bigint[]) AS gas_used,
+    unnest($13::varchar[]) AS gas_price,
+    unnest($14::varchar[]) AS status,
+    unnest($15::bigint[]) AS block_timestamp,
+    unnest($16::text[])::jsonb AS raw_data,
+    unnest($17::bigint[]) AS created_at
+ON CONFLICT (chain_id, tx_hash, block_number) DO NOTHING
+`
+
+type CreateTransactionsBatchParams struct {
+	Column1  []string `db:"column_1" json:"column_1"`
+	Column2  []string `db:"column_2" json:"column_2"`
+	Column3  []int64  `db:"column_3" json:"column_3"`
+	Column4  []string `db:"column_4" json:"column_4"`
+	Column5  []int32  `db:"column_5" json:"column_5"`
+	Column6  []string `db:"column_6" json:"column_6"`
+	Column7  []string `db:"column_7" json:"column_7"`
+	Column8  []string `db:"column_8" json:"column_8"`
+	Column9  []string `db:"column_9" json:"column_9"`
+	Column10 []string `db:"column_10" json:"column_10"`
+	Column11 []string `db:"column_11" json:"column_11"`
+	Column12 []int64  `db:"column_12" json:"column_12"`
+	Column13 []string `db:"column_13" json:"column_13"`
+	Column14 []string `db:"column_14" json:"column_14"`
+	Column15 []int64  `db:"column_15" json:"column_15"`
+	Column16 []string `db:"column_16" json:"column_16"`
+	Column17 []int64  `db:"column_17" json:"column_17"`
+}
+
+func (q *Queries) CreateTransactionsBatch(ctx context.Context, arg CreateTransactionsBatchParams) error {
+	_, err := q.db.ExecContext(ctx, createTransactionsBatch,
+		pq.Array(arg.Column1),
+		pq.Array(arg.Column2),
+		pq.Array(arg.Column3),
+		pq.Array(arg.Column4),
+		pq.Array(arg.Column5),
+		pq.Array(arg.Column6),
+		pq.Array(arg.Column7),
+		pq.Array(arg.Column8),
+		pq.Array(arg.Column9),
+		pq.Array(arg.Column10),
+		pq.Array(arg.Column11),
+		pq.Array(arg.Column12),
+		pq.Array(arg.Column13),
+		pq.Array(arg.Column14),
+		pq.Array(arg.Column15),
+		pq.Array(arg.Column16),
+		pq.Array(arg.Column17),
 	)
 	return err
 }

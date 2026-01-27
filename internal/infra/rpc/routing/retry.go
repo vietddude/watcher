@@ -147,12 +147,12 @@ func CallWithRetryAndFailover(
 		result, err := CallWithRetry(ctx, rpcP, method, params, config)
 		latency := time.Since(start)
 		if err == nil {
-			router.RecordSuccess(p.GetName(), latency)
+			router.RecordSuccess(chainID, p.GetName(), latency)
 			return result, nil
 		}
 
 		lastErr = err
-		router.RecordFailure(p.GetName(), err)
+		router.RecordFailure(chainID, p.GetName(), err)
 
 		// Check if Fatal
 		if ClassifyError(err) == ActionFatal {

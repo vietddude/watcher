@@ -306,6 +306,8 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	if len(relevantTxs) > 0 {
 		slog.Info(
 			"Found relevant transactions",
+			"chain",
+			p.cfg.ChainID,
 			"block",
 			block.Number,
 			"matched",
@@ -345,30 +347,64 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// 7. Persist Data
+	// 7. Persist Data (Atomic Transaction)
 	block.ChainID = p.cfg.ChainID // Ensure ChainID matches pipeline config
-	if err = p.cfg.BlockRepo.Save(ctx, block); err != nil {
-		return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
-	}
-	// Mark as processed
-	if err := p.cfg.BlockRepo.UpdateStatus(ctx, p.cfg.ChainID, block.Number, domain.BlockStatusProcessed); err != nil {
-		slog.Warn("Failed to update block status", "block", block.Number, "error", err)
+	block.Status = domain.BlockStatusProcessed
+
+	// Set ChainID on all transactions
+	for _, tx := range relevantTxs {
+		tx.ChainID = p.cfg.ChainID
 	}
 
-	// Save Transactions (Batch)
-	if len(relevantTxs) > 0 {
-		for _, tx := range relevantTxs {
-			tx.ChainID = p.cfg.ChainID
+	// Use UnitOfWork for atomic persistence if DB is available
+	if p.cfg.DB != nil {
+		uow, err := p.cfg.DB.NewUnitOfWork(ctx)
+		if err != nil {
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("failed to create unit of work: %w", err))
 		}
-		if err = p.cfg.TransactionRepo.SaveBatch(ctx, relevantTxs); err != nil {
-			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save transactions failed: %w", err))
-		}
-	}
+		defer uow.Rollback()
 
-	// 8. Update Cursor
-	// Advance cursor to this block
-	if err := p.cfg.Cursor.Advance(ctx, p.cfg.ChainID, targetBlockNum, block.Hash); err != nil {
-		return false, fmt.Errorf("cursor advance failed: %w", err)
+		// Save block with status already set to processed
+		if err = uow.SaveBlocks(ctx, []*domain.Block{block}); err != nil {
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
+		}
+
+		// Save transactions
+		if len(relevantTxs) > 0 {
+			if err = uow.SaveTransactions(ctx, relevantTxs); err != nil {
+				return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save transactions failed: %w", err))
+			}
+		}
+
+		// Advance cursor
+		if err = uow.AdvanceCursor(ctx, p.cfg.ChainID, targetBlockNum, block.Hash); err != nil {
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("cursor advance failed: %w", err))
+		}
+
+		// Commit all changes atomically
+		if err = uow.Commit(); err != nil {
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("commit failed: %w", err))
+		}
+
+		// Track successful atomic commit
+		chainName, _ := domain.ChainNameFromID(p.cfg.ChainID)
+		metrics.DBAtomicCommits.WithLabelValues(chainName).Inc()
+	} else {
+		// Fallback to non-atomic persistence for backward compatibility
+		if err = p.cfg.BlockRepo.Save(ctx, block); err != nil {
+			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
+		}
+		if err := p.cfg.BlockRepo.UpdateStatus(ctx, p.cfg.ChainID, block.Number, domain.BlockStatusProcessed); err != nil {
+			slog.Warn("Failed to update block status", "block", block.Number, "error", err)
+		}
+		if len(relevantTxs) > 0 {
+			if err = p.cfg.TransactionRepo.SaveBatch(ctx, relevantTxs); err != nil {
+				return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save transactions failed: %w", err))
+			}
+		}
+		if err := p.cfg.Cursor.Advance(ctx, p.cfg.ChainID, targetBlockNum, block.Hash); err != nil {
+			return false, fmt.Errorf("cursor advance failed: %w", err)
+		}
 	}
 
 	// Optimization: If we just processed a block successfully,

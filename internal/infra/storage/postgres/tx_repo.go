@@ -57,52 +57,88 @@ func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
 	return nil
 }
 
-// SaveBatch saves multiple transactions.
+// SaveBatch saves multiple transactions using a single multi-row INSERT.
 func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error {
 	if len(txs) == 0 {
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	now := time.Now().Unix()
 
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	// Prepare arrays for UNNEST
+	chainIDs := make([]string, len(txs))
+	txHashes := make([]string, len(txs))
+	blockNumbers := make([]int64, len(txs))
+	blockHashes := make([]string, len(txs))
+	txIndexes := make([]int32, len(txs))
+	fromAddresses := make([]string, len(txs))
+	toAddresses := make([]string, len(txs))
+	values := make([]string, len(txs))
+	txTypes := make([]string, len(txs))
+	tokenAddresses := make([]string, len(txs))
+	tokenAmounts := make([]string, len(txs))
+	gasUseds := make([]int64, len(txs))
+	gasPrices := make([]string, len(txs))
+	statuses := make([]string, len(txs))
+	blockTimestamps := make([]int64, len(txs))
+	rawDatas := make([]string, len(txs))
+	createdAts := make([]int64, len(txs))
 
-	qtx := r.db.Queries.WithTx(tx)
-
-	for _, t := range txs {
+	for i, t := range txs {
 		blockHash := t.BlockHash
 		if blockHash == "" {
 			blockHash = "0x"
 		}
 
-		err := qtx.CreateTransaction(ctx, sqlc.CreateTransactionParams{
-			ChainID:        string(t.ChainID),
-			TxHash:         t.Hash,
-			BlockNumber:    int64(t.BlockNumber),
-			BlockHash:      blockHash,
-			TxIndex:        int32(t.Index),
-			FromAddress:    t.From,
-			ToAddress:      sql.NullString{String: t.To, Valid: t.To != ""},
-			Value:          sql.NullString{String: t.Value, Valid: t.Value != ""},
-			TxType:         sql.NullString{String: string(t.Type), Valid: t.Type != ""},
-			TokenAddress:   sql.NullString{String: t.TokenAddress, Valid: t.TokenAddress != ""},
-			TokenAmount:    sql.NullString{String: t.TokenAmount, Valid: t.TokenAmount != ""},
-			GasUsed:        sql.NullInt64{Int64: int64(t.GasUsed), Valid: true},
-			GasPrice:       sql.NullString{String: t.GasPrice, Valid: t.GasPrice != ""},
-			Status:         sql.NullString{String: string(t.Status), Valid: string(t.Status) != ""},
-			CreatedAt:      sql.NullInt64{Int64: time.Now().Unix(), Valid: true},
-			BlockTimestamp: int64(t.Timestamp),
-			RawData:        pqtype.NullRawMessage{RawMessage: t.RawData, Valid: len(t.RawData) > 0},
-		})
-		if err != nil {
-			return err
+		chainID := string(t.ChainID)
+		if chainID == "" {
+			// Fallback to a safe value or log error.
+			// In production, ChainID should NEVER be empty here.
+			chainID = "unknown"
 		}
+
+		chainIDs[i] = chainID
+		txHashes[i] = t.Hash
+		blockNumbers[i] = int64(t.BlockNumber)
+		blockHashes[i] = blockHash
+		txIndexes[i] = int32(t.Index)
+		fromAddresses[i] = t.From
+		toAddresses[i] = t.To
+		values[i] = t.Value
+		txTypes[i] = string(t.Type)
+		tokenAddresses[i] = t.TokenAddress
+		tokenAmounts[i] = t.TokenAmount
+		gasUseds[i] = int64(t.GasUsed)
+		gasPrices[i] = t.GasPrice
+		statuses[i] = string(t.Status)
+		blockTimestamps[i] = int64(t.Timestamp)
+		if len(t.RawData) > 0 {
+			rawDatas[i] = string(t.RawData)
+		} else {
+			rawDatas[i] = "null"
+		}
+		createdAts[i] = now
 	}
 
-	return tx.Commit()
+	return r.db.Queries.CreateTransactionsBatch(ctx, sqlc.CreateTransactionsBatchParams{
+		Column1:  chainIDs,
+		Column2:  txHashes,
+		Column3:  blockNumbers,
+		Column4:  blockHashes,
+		Column5:  txIndexes,
+		Column6:  fromAddresses,
+		Column7:  toAddresses,
+		Column8:  values,
+		Column9:  txTypes,
+		Column10: tokenAddresses,
+		Column11: tokenAmounts,
+		Column12: gasUseds,
+		Column13: gasPrices,
+		Column14: statuses,
+		Column15: blockTimestamps,
+		Column16: rawDatas,
+		Column17: createdAts,
+	})
 }
 
 // GetByHash retrieves a transaction by hash.

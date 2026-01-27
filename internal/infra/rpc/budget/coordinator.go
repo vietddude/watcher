@@ -300,12 +300,12 @@ func (c *Coordinator) Call(
 		c.RecordRequest(p.GetName(), method)
 
 		if err == nil {
-			c.router.RecordSuccess(p.GetName(), latency) // Fix validation: passing actual latency
+			c.router.RecordSuccess(chainID, p.GetName(), latency) // Fix validation: passing actual latency
 			return result, nil
 		}
 
 		// Handle Failure
-		c.router.RecordFailure(p.GetName(), err)
+		c.router.RecordFailure(chainID, p.GetName(), err)
 		lastErr = err
 
 		// Classify Error
@@ -369,7 +369,7 @@ func (c *Coordinator) Execute(
 		}
 
 		// Handle Failure
-		c.router.RecordFailure(p.GetName(), err)
+		c.router.RecordFailure(chainID, p.GetName(), err)
 		lastErr = err
 
 		// Check if we should failover

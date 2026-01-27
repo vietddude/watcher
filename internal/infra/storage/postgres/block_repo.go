@@ -36,35 +36,37 @@ func (r *BlockRepo) Save(ctx context.Context, block *domain.Block) error {
 	return nil
 }
 
-// SaveBatch saves multiple blocks to the database.
+// SaveBatch saves multiple blocks to the database using a single multi-row INSERT.
 func (r *BlockRepo) SaveBatch(ctx context.Context, blocks []*domain.Block) error {
 	if len(blocks) == 0 {
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	// Prepare arrays for UNNEST
+	chainIDs := make([]string, len(blocks))
+	blockNumbers := make([]int64, len(blocks))
+	blockHashes := make([]string, len(blocks))
+	parentHashes := make([]string, len(blocks))
+	blockTimestamps := make([]int64, len(blocks))
+	statuses := make([]string, len(blocks))
 
-	qtx := r.db.Queries.WithTx(tx)
-
-	for _, block := range blocks {
-		err := qtx.CreateBlock(ctx, sqlc.CreateBlockParams{
-			ChainID:        string(block.ChainID),
-			BlockNumber:    int64(block.Number),
-			BlockHash:      block.Hash,
-			ParentHash:     block.ParentHash,
-			BlockTimestamp: int64(block.Timestamp),
-			Status:         string(block.Status),
-		})
-		if err != nil {
-			return err
-		}
+	for i, block := range blocks {
+		chainIDs[i] = string(block.ChainID)
+		blockNumbers[i] = int64(block.Number)
+		blockHashes[i] = block.Hash
+		parentHashes[i] = block.ParentHash
+		blockTimestamps[i] = int64(block.Timestamp)
+		statuses[i] = string(block.Status)
 	}
 
-	return tx.Commit()
+	return r.db.Queries.CreateBlocksBatch(ctx, sqlc.CreateBlocksBatchParams{
+		Column1: chainIDs,
+		Column2: blockNumbers,
+		Column3: blockHashes,
+		Column4: parentHashes,
+		Column5: blockTimestamps,
+		Column6: statuses,
+	})
 }
 
 // GetByNumber retrieves a block by number.

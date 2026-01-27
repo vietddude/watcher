@@ -30,8 +30,9 @@ func (m *MockRouter) AddProvider(chainID domain.ChainID, p provider.Provider) {
 	// No-op for mock
 }
 
-func (m *MockRouter) RecordSuccess(providerName string, latency time.Duration) {}
-func (m *MockRouter) RecordFailure(providerName string, err error)             {}
+func (m *MockRouter) RecordSuccess(chainID domain.ChainID, providerName string, latency time.Duration) {
+}
+func (m *MockRouter) RecordFailure(chainID domain.ChainID, providerName string, err error) {}
 func (m *MockRouter) RotateProvider(chainID domain.ChainID) (provider.Provider, error) {
 	return nil, nil
 }

@@ -55,3 +55,19 @@ WHERE chain_id = $1 AND block_number BETWEEN $2 AND $3;
 -- name: DeleteBlocksOlderThan :exec
 DELETE FROM blocks
 WHERE chain_id = $1 AND block_timestamp < $2;
+
+-- name: CreateBlocksBatch :exec
+INSERT INTO blocks (chain_id, block_number, block_hash, parent_hash, block_timestamp, status)
+SELECT
+    unnest($1::varchar[]) AS chain_id,
+    unnest($2::bigint[]) AS block_number,
+    unnest($3::varchar[]) AS block_hash,
+    unnest($4::varchar[]) AS parent_hash,
+    unnest($5::bigint[]) AS block_timestamp,
+    unnest($6::varchar[]) AS status
+ON CONFLICT (chain_id, block_number) DO UPDATE
+SET block_hash = EXCLUDED.block_hash,
+    parent_hash = EXCLUDED.parent_hash,
+    block_timestamp = EXCLUDED.block_timestamp,
+    status = EXCLUDED.status;
+

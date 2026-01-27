@@ -318,6 +318,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 			Recovery:        recoveryHandler,
 			Emitter:         finalityEmitter,
 			Filter:          simpleFilter,
+			DB:              db, // For atomic UnitOfWork operations
 			BlockRepo:       blockRepo,
 			TransactionRepo: txRepo,
 			ScanInterval:    chainCfg.ScanInterval,

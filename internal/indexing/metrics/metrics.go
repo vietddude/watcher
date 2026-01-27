@@ -214,4 +214,23 @@ var (
 		},
 		[]string{"chain", "type", "direction"}, // type: interval/batch, direction: up/down
 	)
+
+	// DBBatchSize tracks the size of batch database operations
+	DBBatchSize = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "watcher_db_batch_size",
+			Help:    "Size of batch database operations",
+			Buckets: []float64{1, 5, 10, 25, 50, 100, 250, 500},
+		},
+		[]string{"operation"}, // "save_blocks", "save_transactions"
+	)
+
+	// DBAtomicCommits tracks successful atomic commits via UnitOfWork
+	DBAtomicCommits = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_db_atomic_commits_total",
+			Help: "Total number of successful atomic commits via UnitOfWork",
+		},
+		[]string{"chain"},
+	)
 )

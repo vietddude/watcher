@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/lib/pq"
 )
 
 const createBlock = `-- name: CreateBlock :exec
@@ -44,6 +46,43 @@ func (q *Queries) CreateBlock(ctx context.Context, arg CreateBlockParams) error 
 		arg.ParentHash,
 		arg.BlockTimestamp,
 		arg.Status,
+	)
+	return err
+}
+
+const createBlocksBatch = `-- name: CreateBlocksBatch :exec
+INSERT INTO blocks (chain_id, block_number, block_hash, parent_hash, block_timestamp, status)
+SELECT
+    unnest($1::varchar[]) AS chain_id,
+    unnest($2::bigint[]) AS block_number,
+    unnest($3::varchar[]) AS block_hash,
+    unnest($4::varchar[]) AS parent_hash,
+    unnest($5::bigint[]) AS block_timestamp,
+    unnest($6::varchar[]) AS status
+ON CONFLICT (chain_id, block_number) DO UPDATE
+SET block_hash = EXCLUDED.block_hash,
+    parent_hash = EXCLUDED.parent_hash,
+    block_timestamp = EXCLUDED.block_timestamp,
+    status = EXCLUDED.status
+`
+
+type CreateBlocksBatchParams struct {
+	Column1 []string `db:"column_1" json:"column_1"`
+	Column2 []int64  `db:"column_2" json:"column_2"`
+	Column3 []string `db:"column_3" json:"column_3"`
+	Column4 []string `db:"column_4" json:"column_4"`
+	Column5 []int64  `db:"column_5" json:"column_5"`
+	Column6 []string `db:"column_6" json:"column_6"`
+}
+
+func (q *Queries) CreateBlocksBatch(ctx context.Context, arg CreateBlocksBatchParams) error {
+	_, err := q.db.ExecContext(ctx, createBlocksBatch,
+		pq.Array(arg.Column1),
+		pq.Array(arg.Column2),
+		pq.Array(arg.Column3),
+		pq.Array(arg.Column4),
+		pq.Array(arg.Column5),
+		pq.Array(arg.Column6),
 	)
 	return err
 }
