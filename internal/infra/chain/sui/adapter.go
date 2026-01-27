@@ -661,38 +661,49 @@ func (a *Adapter) mapTransaction(
 		}
 	}
 
-	// Extract SUI Value from BalanceChanges
-	// SUI coin type is "0x2::sui::SUI"
+	// Extract balance changes
+	txType := domain.TxTypeNative
+	tokenAddr := ""
+	tokenAmount := ""
 	for _, bc := range execTx.GetBalanceChanges() {
 		coinType := bc.GetCoinType()
-		addr := bc.GetAddress()
-		amountStr := bc.GetAmount()
+		isSui := coinType == "0x2::sui::SUI" || coinType == "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
 
+		amountStr := bc.GetAmount()
+		absAmount := amountStr
+		if len(amountStr) > 0 && amountStr[0] == '-' {
+			absAmount = amountStr[1:]
+		}
+
+		if !isSui {
+			txType = domain.TxTypeToken
+			tokenAddr = coinType
+			tokenAmount = absAmount
+		}
+
+		addr := bc.GetAddress()
 		// We want the sender's SUI balance change (usually negative = outgoing)
-		if addr == sender && (coinType == "0x2::sui::SUI" || coinType == "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI") {
-			// Remove leading minus sign to get absolute value
-			if len(amountStr) > 0 && amountStr[0] == '-' {
-				value = amountStr[1:]
-			} else {
-				value = amountStr
-			}
-			break
+		if addr == sender && isSui {
+			value = absAmount
 		}
 	}
 
 	raw, _ := json.Marshal(recipients)
 
 	return &domain.Transaction{
-		Hash:        execTx.GetDigest(),
-		BlockNumber: block.Number,
-		BlockHash:   block.Hash,
-		From:        sender,
-		To:          to,
-		Value:       value,
-		GasUsed:     gasUsed,
-		GasPrice:    gasPrice,
-		Status:      status,
-		Timestamp:   block.Timestamp,
-		RawData:     raw,
+		Hash:         execTx.GetDigest(),
+		BlockNumber:  block.Number,
+		BlockHash:    block.Hash,
+		Type:         txType,
+		TokenAddress: tokenAddr,
+		TokenAmount:  tokenAmount,
+		From:         sender,
+		To:           to,
+		Value:        value,
+		GasUsed:      gasUsed,
+		GasPrice:     gasPrice,
+		Status:       status,
+		Timestamp:    block.Timestamp,
+		RawData:      raw,
 	}
 }

@@ -144,8 +144,98 @@ func TestTronAdapter_ParseTransaction_TransferContract(t *testing.T) {
 	if tx.Value != "1000000" {
 		t.Errorf("expected value=1000000, got %s", tx.Value)
 	}
+	if tx.Type != domain.TxTypeNative {
+		t.Errorf("expected type=native, got %s", tx.Type)
+	}
 	if tx.Status != domain.TxStatusSuccess {
 		t.Errorf("expected status=success, got %s", tx.Status)
+	}
+}
+
+func TestTronAdapter_ParseTransaction_TransferAssetContract(t *testing.T) {
+	adapter := NewTronAdapter("tron", nil, 19)
+
+	block := &domain.Block{
+		Number:    62345555,
+		Hash:      "0000000003abc123",
+		Timestamp: 1700000000,
+	}
+
+	txData := map[string]any{
+		"txID": "trc10txid",
+		"raw_data": map[string]any{
+			"contract": []any{
+				map[string]any{
+					"type": "TransferAssetContract",
+					"parameter": map[string]any{
+						"value": map[string]any{
+							"owner_address": "TFromAddress",
+							"to_address":    "TToAddress",
+							"asset_name":    "1002000", // asset ID
+							"amount":        float64(5000),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	tx, err := adapter.parseTransaction(txData, block, 0)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tx.Type != domain.TxTypeTRC10 {
+		t.Errorf("expected type=trc10, got %s", tx.Type)
+	}
+	if tx.TokenAddress != "1002000" {
+		t.Errorf("expected tokenAddress=1002000, got %s", tx.TokenAddress)
+	}
+	if tx.TokenAmount != "5000" {
+		t.Errorf("expected tokenAmount=5000, got %s", tx.TokenAmount)
+	}
+}
+
+func TestTronAdapter_ParseTransaction_TriggerSmartContract(t *testing.T) {
+	adapter := NewTronAdapter("tron", nil, 19)
+
+	block := &domain.Block{
+		Number:    62345555,
+		Hash:      "0000000003abc123",
+		Timestamp: 1700000000,
+	}
+
+	txData := map[string]any{
+		"txID": "trc20txid",
+		"raw_data": map[string]any{
+			"contract": []any{
+				map[string]any{
+					"type": "TriggerSmartContract",
+					"parameter": map[string]any{
+						"value": map[string]any{
+							"owner_address":    "TFromAddress",
+							"contract_address": "TContractAddress",
+							"data":             "a9059cbb0000000000000000000000001234567890abcdef1234567890abcdef1234567800000000000000000000000000000000000000000000000000000000000003e8", // 1000
+						},
+					},
+				},
+			},
+		},
+	}
+
+	tx, err := adapter.parseTransaction(txData, block, 0)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tx.Type != domain.TxTypeTRC20 {
+		t.Errorf("expected type=trc20, got %s", tx.Type)
+	}
+	if tx.TokenAddress != "TContractAddress" {
+		t.Errorf("expected tokenAddress=TContractAddress, got %s", tx.TokenAddress)
+	}
+	if tx.TokenAmount != "1000" {
+		t.Errorf("expected tokenAmount=1000, got %s", tx.TokenAmount)
 	}
 }
 

@@ -282,6 +282,7 @@ func (a *BitcoinAdapter) parseUTXOTransaction(
 			BlockNumber: block.Number,
 			BlockHash:   block.Hash,
 			Hash:        txHash,
+			Type:        domain.TxTypeNative,
 			Index:       txIndex,
 			From:        "", // Outputs-only approach: skip input resolution
 			To:          toAddr,

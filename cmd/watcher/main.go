@@ -38,7 +38,11 @@ func main() {
 	}
 
 	// Initialize stylelog with tint.Options for level control
-	stylelog.InitDefault(&tint.Options{Level: slogLevel})
+	stylelog.InitDefault(
+		&tint.Options{
+			Level:      slogLevel,
+			TimeFormat: time.RFC3339,
+		})
 	slog.Info("Logger initialized", "level", slogLevel.String())
 
 	// Transform config

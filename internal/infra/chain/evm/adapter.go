@@ -171,11 +171,12 @@ func (a *EVMAdapter) parseTransaction(raw map[string]any, block *domain.Block) (
 		Hash:        getString(raw["hash"]),
 		BlockNumber: block.Number,
 		BlockHash:   block.Hash,
+		Type:        domain.TxTypeNative,
 		Index:       int(txIndex),
 		From:        strings.ToLower(getString(raw["from"])),
 		To:          strings.ToLower(getString(raw["to"])),
-		Value:       getString(raw["value"]), // Keep hex
-		GasPrice:    getString(raw["gasPrice"]),
+		Value:       a.hexToDecimal(getString(raw["value"])),
+		GasPrice:    a.hexToDecimal(getString(raw["gasPrice"])),
 		Timestamp:   block.Timestamp, // Inherit from block
 		RawData:     rawDataBytes,
 		Status:      domain.TxStatusSuccess, // Default, will be enriched
@@ -422,12 +423,15 @@ func (a *EVMAdapter) processReceipt(tx *domain.Transaction, receipt map[string]a
 
 	// Store ALL relevant transfers
 	if len(relevantTransfers) > 0 {
+		tx.Type = domain.TxTypeERC20
 		// If only one transfer, simplify storage
 		if len(relevantTransfers) == 1 {
 			tx.RawData, _ = json.Marshal(relevantTransfers[0])
 			// Update tx fields to reflect the transfer
 			tx.To = relevantTransfers[0]["to"]
 			tx.Value = relevantTransfers[0]["value"]
+			tx.TokenAddress = relevantTransfers[0]["contract"]
+			tx.TokenAmount = relevantTransfers[0]["value"]
 		} else {
 			// Multiple transfers - store as array
 			enrichedData := map[string]any{
@@ -437,6 +441,17 @@ func (a *EVMAdapter) processReceipt(tx *domain.Transaction, receipt map[string]a
 			tx.RawData, _ = json.Marshal(enrichedData)
 		}
 	}
+}
+
+func (a *EVMAdapter) hexToDecimal(hexStr string) string {
+	if hexStr == "" || hexStr == "0x" {
+		return "0"
+	}
+	n, err := parseHexToBigInt(hexStr)
+	if err != nil {
+		return "0"
+	}
+	return n.String()
 }
 
 // extractAddress normalizes a topic to a checksummed address
@@ -483,4 +498,15 @@ func hashAddresses(addrs []string) uint64 {
 		}
 	}
 	return h
+}
+
+func hexToDecimal(hexStr string) string {
+	if hexStr == "" || hexStr == "0x" {
+		return "0"
+	}
+	n, err := parseHexToBigInt(hexStr)
+	if err != nil {
+		return "0"
+	}
+	return n.String()
 }

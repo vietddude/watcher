@@ -41,6 +41,9 @@ func (r *TxRepo) Save(ctx context.Context, tx *domain.Transaction) error {
 		FromAddress:    tx.From,
 		ToAddress:      sql.NullString{String: tx.To, Valid: tx.To != ""},
 		Value:          sql.NullString{String: tx.Value, Valid: tx.Value != ""},
+		TxType:         sql.NullString{String: string(tx.Type), Valid: tx.Type != ""},
+		TokenAddress:   sql.NullString{String: tx.TokenAddress, Valid: tx.TokenAddress != ""},
+		TokenAmount:    sql.NullString{String: tx.TokenAmount, Valid: tx.TokenAmount != ""},
 		GasUsed:        sql.NullInt64{Int64: int64(tx.GasUsed), Valid: true},
 		GasPrice:       sql.NullString{String: tx.GasPrice, Valid: tx.GasPrice != ""},
 		Status:         sql.NullString{String: string(tx.Status), Valid: string(tx.Status) != ""},
@@ -84,6 +87,9 @@ func (r *TxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) error
 			FromAddress:    t.From,
 			ToAddress:      sql.NullString{String: t.To, Valid: t.To != ""},
 			Value:          sql.NullString{String: t.Value, Valid: t.Value != ""},
+			TxType:         sql.NullString{String: string(t.Type), Valid: t.Type != ""},
+			TokenAddress:   sql.NullString{String: t.TokenAddress, Valid: t.TokenAddress != ""},
+			TokenAmount:    sql.NullString{String: t.TokenAmount, Valid: t.TokenAmount != ""},
 			GasUsed:        sql.NullInt64{Int64: int64(t.GasUsed), Valid: true},
 			GasPrice:       sql.NullString{String: t.GasPrice, Valid: t.GasPrice != ""},
 			Status:         sql.NullString{String: string(t.Status), Valid: string(t.Status) != ""},
@@ -170,18 +176,22 @@ func (r *TxRepo) DeleteByBlock(
 
 func (r *TxRepo) toDomain(row sqlc.Transaction) *domain.Transaction {
 	tx := &domain.Transaction{
-		ChainID:     domain.ChainID(row.ChainID),
-		Hash:        row.TxHash,
-		BlockNumber: uint64(row.BlockNumber),
-		BlockHash:   row.BlockHash,
-		Index:       int(row.TxIndex),
-		From:        row.FromAddress,
-		To:          row.ToAddress.String,
-		Value:       row.Value.String,
-		GasUsed:     uint64(row.GasUsed.Int64),
-		GasPrice:    row.GasPrice.String,
-		Status:      domain.TxStatus(row.Status.String),
-		Timestamp:   uint64(row.BlockTimestamp), // Use BlockTimestamp as it is NOT NULL in schema
+		ChainID:      domain.ChainID(row.ChainID),
+		Hash:         row.TxHash,
+		BlockNumber:  uint64(row.BlockNumber),
+		BlockHash:    row.BlockHash,
+		Index:        int(row.TxIndex),
+		From:         row.FromAddress,
+		To:           row.ToAddress.String,
+		Value:        row.Value.String,
+		Type:         domain.TxType(row.TxType.String),
+		TokenAddress: row.TokenAddress.String,
+		TokenAmount:  row.TokenAmount.String,
+		GasUsed:      uint64(row.GasUsed.Int64),
+		GasPrice:     row.GasPrice.String,
+		Status:       domain.TxStatus(row.Status.String),
+		Timestamp:    uint64(row.BlockTimestamp), // Use BlockTimestamp as it is NOT NULL in schema
+		RawData:      row.RawData.RawMessage,
 		// Note: CreatedAt is also available in row.CreatedAt
 	}
 	return tx

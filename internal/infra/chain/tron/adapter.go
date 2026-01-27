@@ -364,36 +364,40 @@ func (a *TronAdapter) parseTransaction(
 	}
 
 	// Extract addresses based on contract type
-	from, to, value := a.extractTransferInfo(contract)
+	from, to, value, txType, tokenAddr, tokenAmount := a.extractTransferInfo(contract)
 
 	rawBytes, _ := json.Marshal(txData)
 
 	return &domain.Transaction{
-		ChainID:     a.chainID,
-		BlockNumber: block.Number,
-		BlockHash:   block.Hash,
-		Hash:        txID,
-		Index:       txIndex,
-		From:        from,
-		To:          to,
-		Value:       value,
-		Status:      a.getTxStatus(txData),
-		Timestamp:   block.Timestamp,
-		RawData:     rawBytes,
+		ChainID:      a.chainID,
+		BlockNumber:  block.Number,
+		BlockHash:    block.Hash,
+		Hash:         txID,
+		Type:         txType,
+		TokenAddress: tokenAddr,
+		TokenAmount:  tokenAmount,
+		Index:        txIndex,
+		From:         from,
+		To:           to,
+		Value:        value,
+		Status:       a.getTxStatus(txData),
+		Timestamp:    block.Timestamp,
+		RawData:      rawBytes,
 	}, nil
 }
 
-// extractTransferInfo extracts from/to/value from a Tron contract.
-func (a *TronAdapter) extractTransferInfo(contract map[string]any) (from, to, value string) {
+// extractTransferInfo extracts from/to/value and type info from a Tron contract.
+func (a *TronAdapter) extractTransferInfo(contract map[string]any) (from, to, value string, txType domain.TxType, tokenAddr, tokenAmount string) {
+	txType = domain.TxTypeNative
 	contractType, _ := contract["type"].(string)
 	parameter, ok := contract["parameter"].(map[string]any)
 	if !ok {
-		return "", "", "0"
+		return "", "", "0", txType, "", ""
 	}
 
 	paramValue, ok := parameter["value"].(map[string]any)
 	if !ok {
-		return "", "", "0"
+		return "", "", "0", txType, "", ""
 	}
 
 	switch contractType {
@@ -407,17 +411,35 @@ func (a *TronAdapter) extractTransferInfo(contract map[string]any) (from, to, va
 
 	case "TransferAssetContract":
 		// TRC10 token transfer
+		txType = domain.TxTypeTRC10
 		from, _ = paramValue["owner_address"].(string)
 		to, _ = paramValue["to_address"].(string)
+		tokenAddr, _ = paramValue["asset_name"].(string)
 		if amount, ok := paramValue["amount"].(float64); ok {
-			value = strconv.FormatInt(int64(amount), 10)
+			tokenAmount = strconv.FormatInt(int64(amount), 10)
+			value = "0" // Native value is 0
 		}
 
 	case "TriggerSmartContract":
-		// TRC20 token transfer (smart contract call)
+		// TRC20 token transfer (smart contract call) - basic info
+		txType = domain.TxTypeTRC20
 		from, _ = paramValue["owner_address"].(string)
 		to, _ = paramValue["contract_address"].(string)
-		// Value would need to be decoded from data field for TRC20
+		tokenAddr = to // Contract address is the token address
+		value = "0"
+
+		// Try to extract amount from data if it's a standard transfer(address,uint256)
+		if data, ok := paramValue["data"].(string); ok {
+			// sighash 0xa9059cbb = transfer(address,uint256)
+			if len(data) >= 72 && data[:8] == "a9059cbb" {
+				// Address is 32 bytes (64 chars) at offset 8
+				// Amount is 32 bytes (64 chars) at offset 72
+				amountHex := data[72 : 72+64]
+				if n, err := strconv.ParseUint(amountHex, 16, 64); err == nil {
+					tokenAmount = strconv.FormatUint(n, 10)
+				}
+			}
+		}
 
 	default:
 		// Other contract types
@@ -428,7 +450,7 @@ func (a *TronAdapter) extractTransferInfo(contract map[string]any) (from, to, va
 		value = "0"
 	}
 
-	return from, to, value
+	return
 }
 
 // getTxStatus returns the transaction status.

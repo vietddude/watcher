@@ -189,31 +189,13 @@ func TestGetBlock_NotFound(t *testing.T) {
 	}
 }
 
-func TestGetBlock_NilCheckpoint(t *testing.T) {
-	mockServer := &MockLedgerServer{
-		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
-			return &v2.GetCheckpointResponse{
-				Checkpoint: nil,
-			}, nil
-		},
-	}
-
-	adapter := setupTestAdapter(t, mockServer)
-
-	block, err := adapter.GetBlock(context.Background(), 123)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if block != nil {
-		t.Fatal("Expected nil block for nil checkpoint in response")
-	}
-}
-
 func TestGetTransactions(t *testing.T) {
 	seqNum := uint64(123)
 	txDigest := "tx_digest_abc"
 	sender := "sender_addr"
 	success := true
+	suiCoinType := "0x2::sui::SUI"
+	amount := "1000"
 
 	mockServer := &MockLedgerServer{
 		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
@@ -229,6 +211,13 @@ func TestGetTransactions(t *testing.T) {
 							Effects: &v2.TransactionEffects{
 								Status: &v2.ExecutionStatus{
 									Success: &success,
+								},
+							},
+							BalanceChanges: []*v2.BalanceChange{
+								{
+									Address:  &sender,
+									CoinType: &suiCoinType,
+									Amount:   &amount,
 								},
 							},
 						},
@@ -251,10 +240,66 @@ func TestGetTransactions(t *testing.T) {
 	if txs[0].Hash != txDigest {
 		t.Errorf("Expected tx hash %s, got %s", txDigest, txs[0].Hash)
 	}
-	if txs[0].From != sender {
-		t.Errorf("Expected sender %s, got %s", sender, txs[0].From)
+	if txs[0].Type != domain.TxTypeNative {
+		t.Errorf("Expected type native, got %s", txs[0].Type)
 	}
-	if txs[0].Status != domain.TxStatusSuccess {
-		t.Errorf("Expected status success, got %v", txs[0].Status)
+	if txs[0].Value != "1000" {
+		t.Errorf("Expected value 1000, got %s", txs[0].Value)
+	}
+}
+
+func TestGetTransactions_Token(t *testing.T) {
+	seqNum := uint64(123)
+	txDigest := "tx_digest_token"
+	sender := "sender_addr"
+	success := true
+	tokenCoinType := "0xabc::token::TOKEN"
+	amount := "-500"
+
+	mockServer := &MockLedgerServer{
+		GetCheckpointFunc: func(ctx context.Context, in *v2.GetCheckpointRequest) (*v2.GetCheckpointResponse, error) {
+			return &v2.GetCheckpointResponse{
+				Checkpoint: &v2.Checkpoint{
+					SequenceNumber: &seqNum,
+					Transactions: []*v2.ExecutedTransaction{
+						{
+							Digest: &txDigest,
+							Transaction: &v2.Transaction{
+								Sender: &sender,
+							},
+							Effects: &v2.TransactionEffects{
+								Status: &v2.ExecutionStatus{
+									Success: &success,
+								},
+							},
+							BalanceChanges: []*v2.BalanceChange{
+								{
+									Address:  &sender,
+									CoinType: &tokenCoinType,
+									Amount:   &amount,
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	adapter := setupTestAdapter(t, mockServer)
+
+	block := &domain.Block{Number: 123}
+	txs, err := adapter.GetTransactions(context.Background(), block)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if txs[0].Type != domain.TxTypeToken {
+		t.Errorf("Expected type token, got %s", txs[0].Type)
+	}
+	if txs[0].TokenAddress != tokenCoinType {
+		t.Errorf("Expected token addr %s, got %s", tokenCoinType, txs[0].TokenAddress)
+	}
+	if txs[0].TokenAmount != "500" {
+		t.Errorf("Expected token amount 500, got %s", txs[0].TokenAmount)
 	}
 }

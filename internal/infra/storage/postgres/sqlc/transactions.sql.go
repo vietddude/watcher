@@ -22,6 +22,9 @@ INSERT INTO transactions (
     from_address,
     to_address,
     value,
+    tx_type,
+    token_address,
+    token_amount,
     gas_used,
     gas_price,
     status,
@@ -29,7 +32,7 @@ INSERT INTO transactions (
     raw_data,
     created_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 ) ON CONFLICT (chain_id, tx_hash, block_number) DO NOTHING
 `
 
@@ -42,6 +45,9 @@ type CreateTransactionParams struct {
 	FromAddress    string                `db:"from_address" json:"from_address"`
 	ToAddress      sql.NullString        `db:"to_address" json:"to_address"`
 	Value          sql.NullString        `db:"value" json:"value"`
+	TxType         sql.NullString        `db:"tx_type" json:"tx_type"`
+	TokenAddress   sql.NullString        `db:"token_address" json:"token_address"`
+	TokenAmount    sql.NullString        `db:"token_amount" json:"token_amount"`
 	GasUsed        sql.NullInt64         `db:"gas_used" json:"gas_used"`
 	GasPrice       sql.NullString        `db:"gas_price" json:"gas_price"`
 	Status         sql.NullString        `db:"status" json:"status"`
@@ -60,6 +66,9 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.FromAddress,
 		arg.ToAddress,
 		arg.Value,
+		arg.TxType,
+		arg.TokenAddress,
+		arg.TokenAmount,
 		arg.GasUsed,
 		arg.GasPrice,
 		arg.Status,
@@ -101,7 +110,7 @@ func (q *Queries) DeleteTransactionsOlderThan(ctx context.Context, arg DeleteTra
 }
 
 const getTransactionByHash = `-- name: GetTransactionByHash :one
-SELECT chain_id, tx_hash, block_number, block_hash, tx_index, from_address, to_address, value, gas_used, gas_price, status, block_timestamp, raw_data, created_at FROM transactions
+SELECT chain_id, tx_hash, block_number, block_hash, tx_index, from_address, to_address, value, gas_used, gas_price, status, block_timestamp, raw_data, created_at, tx_type, token_address, token_amount FROM transactions
 WHERE chain_id = $1 AND tx_hash = $2
 LIMIT 1
 `
@@ -129,12 +138,15 @@ func (q *Queries) GetTransactionByHash(ctx context.Context, arg GetTransactionBy
 		&i.BlockTimestamp,
 		&i.RawData,
 		&i.CreatedAt,
+		&i.TxType,
+		&i.TokenAddress,
+		&i.TokenAmount,
 	)
 	return i, err
 }
 
 const getTransactionsByBlock = `-- name: GetTransactionsByBlock :many
-SELECT chain_id, tx_hash, block_number, block_hash, tx_index, from_address, to_address, value, gas_used, gas_price, status, block_timestamp, raw_data, created_at FROM transactions
+SELECT chain_id, tx_hash, block_number, block_hash, tx_index, from_address, to_address, value, gas_used, gas_price, status, block_timestamp, raw_data, created_at, tx_type, token_address, token_amount FROM transactions
 WHERE chain_id = $1 AND block_number = $2
 `
 
@@ -167,6 +179,9 @@ func (q *Queries) GetTransactionsByBlock(ctx context.Context, arg GetTransaction
 			&i.BlockTimestamp,
 			&i.RawData,
 			&i.CreatedAt,
+			&i.TxType,
+			&i.TokenAddress,
+			&i.TokenAmount,
 		); err != nil {
 			return nil, err
 		}

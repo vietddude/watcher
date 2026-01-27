@@ -68,6 +68,9 @@ type Transaction struct {
 	BlockTimestamp int64                 `db:"block_timestamp" json:"block_timestamp"`
 	RawData        pqtype.NullRawMessage `db:"raw_data" json:"raw_data"`
 	CreatedAt      sql.NullInt64         `db:"created_at" json:"created_at"`
+	TxType         sql.NullString        `db:"tx_type" json:"tx_type"`
+	TokenAddress   sql.NullString        `db:"token_address" json:"token_address"`
+	TokenAmount    sql.NullString        `db:"token_amount" json:"token_amount"`
 }
 
 type WalletAddress struct {

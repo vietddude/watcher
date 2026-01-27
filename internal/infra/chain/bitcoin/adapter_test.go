@@ -186,6 +186,9 @@ func TestBitcoinAdapter_ParseUTXOTransaction(t *testing.T) {
 	if txs[0].From != "" {
 		t.Errorf("expected From to be empty (outputs-only), got %s", txs[0].From)
 	}
+	if txs[0].Type != domain.TxTypeNative {
+		t.Errorf("expected Type native, got %s", txs[0].Type)
+	}
 
 	// Check second output
 	if txs[1].To != "1ChangeAddress" {

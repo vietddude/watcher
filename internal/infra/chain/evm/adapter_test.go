@@ -149,6 +149,19 @@ func TestEVMAdapter_GetTransactions(t *testing.T) {
 	if txs[0].To != "0xbob" {
 		t.Errorf("expected to=0xbob, got %s", txs[0].To)
 	}
+	if txs[0].Value != "1" {
+		t.Errorf("expected value=1, got %s", txs[0].Value)
+	}
+	if txs[0].GasPrice != "1000000000" {
+		t.Errorf("expected gasPrice=1000000000, got %s", txs[0].GasPrice)
+	}
+	if txs[0].Type != domain.TxTypeNative {
+		t.Errorf("expected type=native, got %s", txs[0].Type)
+	}
+
+	if txs[1].Value != "0" {
+		t.Errorf("expected value=0, got %s", txs[1].Value)
+	}
 }
 
 func TestEVMAdapter_FilterTransactions(t *testing.T) {
@@ -170,6 +183,59 @@ func TestEVMAdapter_FilterTransactions(t *testing.T) {
 
 	if len(filtered) != 3 {
 		t.Fatalf("expected 3 txs, got %d", len(filtered))
+	}
+}
+
+func TestEVMAdapter_EnrichTransaction_ERC20(t *testing.T) {
+	mock := &MockRPCClient{
+		CallFunc: func(ctx context.Context, method string, params any) (any, error) {
+			if method == "eth_getTransactionReceipt" {
+				return map[string]any{
+					"status":  "0x1",
+					"gasUsed": "0x5208",
+					"logs": []any{
+						map[string]any{
+							"address": "0xToken",
+							"topics": []any{
+								"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+								"0x0000000000000000000000000000000000000000000000000000000000000001", // Alice (fake)
+								"0x0000000000000000000000000000000000000000000000000000000000000002", // Bob (fake)
+							},
+							"data": "0xde0b6b3a7640000", // 1 token
+						},
+					},
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	adapter := NewEVMAdapter("ethereum", mock, 12)
+	// Add fake Alice to monitored set so enrichment detects it
+	// address = last 40 hex chars of topic
+	// topic ...001 => address 00...001
+	utilsAddr := "0x0000000000000000000000000000000000000001"
+	adapter.ensureAddressIndex([]string{utilsAddr})
+
+	tx := &domain.Transaction{
+		Hash:    "0xtx1",
+		RawData: []byte(`{}`),
+		Type:    domain.TxTypeNative,
+	}
+
+	err := adapter.EnrichTransaction(context.Background(), tx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if tx.Type != domain.TxTypeERC20 {
+		t.Errorf("expected type=erc20, got %s", tx.Type)
+	}
+	if tx.TokenAddress != "0xtoken" {
+		t.Errorf("expected tokenAddress=0xtoken, got %s", tx.TokenAddress)
+	}
+	if tx.TokenAmount != "1000000000000000000" {
+		t.Errorf("expected tokenAmount=1000000000000000000, got %s", tx.TokenAmount)
 	}
 }
 
