@@ -120,6 +120,10 @@ func (c *Coordinator) scoreProvider(_ domain.ChainID, p provider.Provider) (floa
 		score -= 20
 	}
 
+	if !c.budget.CanMakeCall(p.GetName()) {
+		return 0, "rate limited (short-term)"
+	}
+
 	if httpProv, ok := p.(*provider.HTTPProvider); ok {
 		stats := httpProv.Monitor.GetStats()
 
@@ -265,11 +269,21 @@ func (c *Coordinator) Call(
 		return nil, err
 	}
 	if !c.budget.CanMakeCall(p.GetName()) {
-		if delay := c.budget.GetThrottleDelay(p.GetName()); delay > 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(delay):
+		// Optimization: If the "best" provider is throttled, try to force a rotation
+		// to see if we have another provider that isn't throttled.
+		nextP, rotErr := c.ForceRotate(chainID, p.GetName())
+		if rotErr == nil && nextP.GetName() != p.GetName() {
+			p = nextP
+		}
+
+		// If still throttled (or no other provider), wait only if necessary
+		if !c.budget.CanMakeCall(p.GetName()) {
+			if delay := c.budget.GetThrottleDelay(chainID, p.GetName()); delay > 0 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
 			}
 		}
 	}
@@ -352,11 +366,21 @@ func (c *Coordinator) Execute(
 		return nil, err
 	}
 	if !c.budget.CanMakeCall(p.GetName()) {
-		if delay := c.budget.GetThrottleDelay(p.GetName()); delay > 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(delay):
+		// Optimization: If the "best" provider is throttled, try to force a rotation
+		// to see if we have another provider that isn't throttled.
+		nextP, rotErr := c.ForceRotate(chainID, p.GetName())
+		if rotErr == nil && nextP.GetName() != p.GetName() {
+			p = nextP
+		}
+
+		// If still throttled (or no other provider), wait only if necessary
+		if !c.budget.CanMakeCall(p.GetName()) {
+			if delay := c.budget.GetThrottleDelay(chainID, p.GetName()); delay > 0 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
 			}
 		}
 	}

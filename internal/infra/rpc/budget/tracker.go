@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/vietddude/watcher/internal/core/domain"
 )
 
 // UsageStats holds quota usage statistics.
@@ -22,7 +24,7 @@ type BudgetTracker interface {
 	RecordCall(providerName, method string)
 	GetProviderUsage(providerName string) UsageStats
 	CanMakeCall(providerName string) bool
-	GetThrottleDelay(providerName string) time.Duration
+	GetThrottleDelay(chainID domain.ChainID, providerName string) time.Duration
 	GetUsagePercent() float64
 	Reset()
 }
@@ -165,7 +167,7 @@ func (bt *DefaultBudgetTracker) CanMakeCall(providerName string) bool {
 }
 
 // GetThrottleDelay returns how long to wait before making a call.
-func (bt *DefaultBudgetTracker) GetThrottleDelay(providerName string) time.Duration {
+func (bt *DefaultBudgetTracker) GetThrottleDelay(chainID domain.ChainID, providerName string) time.Duration {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 
@@ -195,6 +197,8 @@ func (bt *DefaultBudgetTracker) GetThrottleDelay(providerName string) time.Durat
 			delay := time.Until(budget.windowStart.Add(budget.windowDuration))
 			slog.Warn(
 				"Rate limit reached, throttling",
+				"chain",
+				chainID,
 				"provider",
 				providerName,
 				"windowCalls",

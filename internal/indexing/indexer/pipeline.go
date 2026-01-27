@@ -248,9 +248,9 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 		if len(addrs) > 0 {
 			relevant, err := preFilter.HasRelevantTransactions(ctx, block, addrs)
 			if err != nil {
-				slog.Warn("PreFilter check failed", "block", targetBlockNum, "error", err)
+				slog.Warn("PreFilter check failed", "chain", p.cfg.ChainID, "block", targetBlockNum, "error", err)
 			} else if !relevant {
-				slog.Debug("Skipping block based on pre-filter", "block", targetBlockNum)
+				slog.Debug("Skipping block based on pre-filter", "chain", p.cfg.ChainID, "block", targetBlockNum)
 				skipFetch = true
 			}
 		}

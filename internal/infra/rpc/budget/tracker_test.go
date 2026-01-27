@@ -4,6 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/vietddude/watcher/internal/core/domain"
 )
 
 func TestBudgetTracker_Concurrency(t *testing.T) {
@@ -50,7 +52,7 @@ func TestBudgetTracker_Throttle(t *testing.T) {
 	tracker.SetProviderQuota("infura", 100)
 
 	// 0% usage
-	if delay := tracker.GetThrottleDelay("infura"); delay != 0 {
+	if delay := tracker.GetThrottleDelay(domain.EthereumMainnet, "infura"); delay != 0 {
 		t.Error("Expected 0 delay")
 	}
 
@@ -60,7 +62,7 @@ func TestBudgetTracker_Throttle(t *testing.T) {
 	}
 
 	// Should have delay at 80%
-	if delay := tracker.GetThrottleDelay("infura"); delay == 0 {
+	if delay := tracker.GetThrottleDelay(domain.EthereumMainnet, "infura"); delay == 0 {
 		t.Error("Expected throttle delay at 80% usage")
 	}
 }

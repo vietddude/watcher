@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"time"
+	"sync"
 
 	logger "log/slog"
 
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/filter"
 	"github.com/vietddude/watcher/internal/infra/rpc"
+	"golang.org/x/sync/errgroup"
 )
 
 type EVMAdapter struct {
@@ -23,6 +24,12 @@ type EVMAdapter struct {
 	addressSet      map[string]struct{}
 	lastAddressHash uint64
 	log             logger.Logger
+
+	// Transaction cache to avoid redundant RPC calls
+	// GetBlock fetches with full transactions, GetTransactions reuses this data
+	txCacheMu      sync.Mutex
+	cachedBlockNum uint64
+	cachedRawTxs   []any
 }
 
 func NewEVMAdapter(
@@ -70,6 +77,14 @@ func (a *EVMAdapter) GetBlock(ctx context.Context, blockNumber uint64) (*domain.
 	if !ok {
 		return nil, fmt.Errorf("invalid block format")
 	}
+
+	// Cache raw transactions to avoid redundant RPC call in GetTransactions
+	a.txCacheMu.Lock()
+	if rawTxs, ok := rawBlock["transactions"].([]any); ok {
+		a.cachedBlockNum = blockNumber
+		a.cachedRawTxs = rawTxs
+	}
+	a.txCacheMu.Unlock()
 
 	return a.parseBlock(rawBlock)
 }
@@ -131,21 +146,35 @@ func (a *EVMAdapter) GetTransactions(
 	ctx context.Context,
 	block *domain.Block,
 ) ([]*domain.Transaction, error) {
-	// Re-fetch block with FULL transactions
-	blockHex := fmt.Sprintf("0x%x", block.Number)
-	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
-	result, err := a.client.Execute(ctx, op)
-	if err != nil {
-		return nil, err
-	}
-	if result == nil {
-		return nil, nil
-	}
+	var rawTxs []any
 
-	rawBlock := result.(map[string]any)
-	rawTxs, ok := rawBlock["transactions"].([]any)
-	if !ok {
-		return []*domain.Transaction{}, nil
+	// Try to use cached transactions from GetBlock (avoids redundant RPC call)
+	a.txCacheMu.Lock()
+	if a.cachedBlockNum == block.Number && a.cachedRawTxs != nil {
+		rawTxs = a.cachedRawTxs
+		// Clear cache after use
+		a.cachedRawTxs = nil
+	}
+	a.txCacheMu.Unlock()
+
+	// Fallback: fetch if cache miss (shouldn't happen in normal flow)
+	if rawTxs == nil {
+		blockHex := fmt.Sprintf("0x%x", block.Number)
+		op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
+		result, err := a.client.Execute(ctx, op)
+		if err != nil {
+			return nil, err
+		}
+		if result == nil {
+			return nil, nil
+		}
+
+		rawBlock := result.(map[string]any)
+		var ok bool
+		rawTxs, ok = rawBlock["transactions"].([]any)
+		if !ok {
+			return []*domain.Transaction{}, nil
+		}
 	}
 
 	txs := make([]*domain.Transaction, 0, len(rawTxs))
@@ -281,74 +310,83 @@ func (a *EVMAdapter) EnrichTransaction(ctx context.Context, tx *domain.Transacti
 	return nil
 }
 
-// EnrichTransactions - batch version
+// EnrichTransactions - parallel batch version with errgroup
 func (a *EVMAdapter) EnrichTransactions(ctx context.Context, txs []*domain.Transaction) error {
 	if len(txs) == 0 {
 		return nil
 	}
 
-	allRequests := make([]rpc.BatchRequest, len(txs))
-	for i, tx := range txs {
-		allRequests[i] = rpc.BatchRequest{
-			Method: "eth_getTransactionReceipt",
-			Params: []any{tx.Hash},
-		}
-	}
-
-	chunkSize := 5
 	rpcProvider, ok := a.client.(rpc.RPCProvider)
 	if !ok {
-		// Fallback to sequential
+		// Fallback to parallel individual calls using errgroup
+		g, ctx := errgroup.WithContext(ctx)
+		g.SetLimit(5) // Limit concurrency to prevent RPC overload
+
 		for _, tx := range txs {
-			if err := a.EnrichTransaction(ctx, tx); err != nil {
-				a.log.Warn("Failed to enrich transaction", "tx", tx.Hash, "error", err)
-			}
+			tx := tx // capture loop variable
+			g.Go(func() error {
+				if err := a.EnrichTransaction(ctx, tx); err != nil {
+					a.log.Warn("Failed to enrich transaction", "tx", tx.Hash, "error", err)
+					// Don't fail the entire batch for individual errors
+				}
+				return nil
+			})
 		}
-		return nil
+		return g.Wait()
 	}
 
-	for i := 0; i < len(allRequests); i += chunkSize {
-		end := i + chunkSize
-		if end > len(allRequests) {
-			end = len(allRequests)
-		}
+	// Use batch RPC calls with parallel chunk processing
+	chunkSize := 10 // Increased chunk size for better efficiency
+	numChunks := (len(txs) + chunkSize - 1) / chunkSize
 
-		chunk := allRequests[i:end]
-		responses, err := rpcProvider.BatchCall(ctx, chunk)
-		if err != nil {
-			a.log.Warn("batch receipt fetch failed", "chunk_start", i, "error", err)
-			time.Sleep(1 * time.Second)
-			continue
-		}
+	// Process chunks in parallel with limited concurrency
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(3) // Max 3 concurrent batch requests
 
-		for j, resp := range responses {
-			txIndex := i + j
-			if txIndex >= len(txs) {
-				break
+	for chunkIdx := 0; chunkIdx < numChunks; chunkIdx++ {
+		chunkIdx := chunkIdx // capture loop variable
+		start := chunkIdx * chunkSize
+		end := min(start+chunkSize, len(txs))
+		chunkTxs := txs[start:end]
+
+		g.Go(func() error {
+			requests := make([]rpc.BatchRequest, len(chunkTxs))
+			for i, tx := range chunkTxs {
+				requests[i] = rpc.BatchRequest{
+					Method: "eth_getTransactionReceipt",
+					Params: []any{tx.Hash},
+				}
 			}
 
-			tx := txs[txIndex]
-			if resp.Error != nil {
-				a.log.Warn("failed to fetch receipt", "tx", tx.Hash, "error", resp.Error)
-				continue
+			responses, err := rpcProvider.BatchCall(ctx, requests)
+			if err != nil {
+				a.log.Warn("batch receipt fetch failed", "chunk", chunkIdx, "error", err)
+				return nil // Don't fail entire batch
 			}
 
-			if resp.Result == nil {
-				continue
+			for j, resp := range responses {
+				if j >= len(chunkTxs) {
+					break
+				}
+				tx := chunkTxs[j]
+				if resp.Error != nil {
+					a.log.Warn("failed to fetch receipt", "tx", tx.Hash, "error", resp.Error)
+					continue
+				}
+				if resp.Result == nil {
+					continue
+				}
+				receipt, ok := resp.Result.(map[string]any)
+				if !ok {
+					continue
+				}
+				a.processReceipt(tx, receipt)
 			}
-
-			receipt, ok := resp.Result.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			a.processReceipt(tx, receipt)
-		}
-
-		time.Sleep(1 * time.Second)
+			return nil
+		})
 	}
 
-	return nil
+	return g.Wait()
 }
 
 // processReceipt - FIXED to handle ALL relevant transfers
@@ -488,11 +526,6 @@ func parseHexString(hexStr string) (uint64, error) {
 	return n.Uint64(), nil
 }
 
-func intFromHex(hexStr string) (int, error) {
-	n, err := parseHexString(hexStr)
-	return int(n), err
-}
-
 func getString(v any) string {
 	if s, ok := v.(string); ok {
 		return s
@@ -508,15 +541,4 @@ func hashAddresses(addrs []string) uint64 {
 		}
 	}
 	return h
-}
-
-func hexToDecimal(hexStr string) string {
-	if hexStr == "" || hexStr == "0x" {
-		return "0"
-	}
-	n, err := parseHexToBigInt(hexStr)
-	if err != nil {
-		return "0"
-	}
-	return n.String()
 }

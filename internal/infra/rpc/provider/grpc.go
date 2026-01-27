@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -25,26 +28,50 @@ type GRPCProvider struct {
 
 // NewGRPCProvider creates a new gRPC provider.
 func NewGRPCProvider(ctx context.Context, name, endpoint string) (*GRPCProvider, error) {
-	// Parse endpoint to determine if TLS is needed
-	target := endpoint
-	var opts []grpc.DialOption
-
-	// Check scheme
-	if strings.HasPrefix(endpoint, "https://") || strings.HasSuffix(endpoint, ":443") {
-		// Use TLS
-		creds := credentials.NewTLS(&tls.Config{})
-		opts = append(opts, grpc.WithTransportCredentials(creds))
-		// Strip scheme for Dial
-		target = strings.TrimPrefix(target, "https://")
-	} else {
-		// No TLS
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		target = strings.TrimPrefix(target, "http://")
+	// 1. Parse URL to separate scheme, host, and path
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		u = &url.URL{Host: endpoint}
 	}
 
-	// Add some default dial options
-	// Note: We don't use WithBlock() anymore to avoid hanging startup if a provider is slow or down.
-	// The Circuit Breaker will handle offline providers after the first failed call.
+	target := u.Host
+	var opts []grpc.DialOption
+
+	// 2. Handle TLS
+	if u.Scheme == "https" || strings.HasSuffix(target, ":443") {
+		creds := credentials.NewTLS(&tls.Config{})
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+		if !strings.Contains(target, ":") {
+			target += ":443"
+		}
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	// 3. Handle Authentication Token from Path (common in Quicknode)
+	pathPrefix := strings.TrimSuffix(u.Path, "/")
+	if pathPrefix != "" && pathPrefix != "/" {
+		slog.Info("Detected authentication token in gRPC path, enabling prefixing", "provider", name, "prefix", pathPrefix)
+
+		// Add interceptors to prefix the method path and add headers for auth
+		opts = append(opts, grpc.WithChainUnaryInterceptor(
+			func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+				token := strings.TrimPrefix(pathPrefix, "/")
+				ctx = metadata.AppendToOutgoingContext(ctx, "x-api-key", token)
+				// Prefix the method with the token path if the proxy requires it
+				return invoker(ctx, pathPrefix+method, req, reply, cc, opts...)
+			},
+		))
+
+		opts = append(opts, grpc.WithChainStreamInterceptor(
+			func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+				token := strings.TrimPrefix(pathPrefix, "/")
+				ctx = metadata.AppendToOutgoingContext(ctx, "x-api-key", token)
+				return streamer(ctx, desc, cc, pathPrefix+method, opts...)
+			},
+		))
+	}
+
 	conn, err := grpc.DialContext(ctx, target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial grpc endpoint %s: %w", target, err)
@@ -58,22 +85,11 @@ func NewGRPCProvider(ctx context.Context, name, endpoint string) (*GRPCProvider,
 }
 
 // Conn returns the underlying gRPC connection.
-// This allows using generated gRPC clients.
 func (p *GRPCProvider) Conn() *grpc.ClientConn {
 	return p.conn
 }
 
 // Execute performs a gRPC operation with monitoring.
-// For gRPC, the operation's Invoke function should wrap the generated client call.
-// Example:
-//
-//	op := provider.Operation{
-//	    Name: "GetBlock",
-//	    Invoke: func(ctx context.Context) (any, error) {
-//	        return grpcClient.GetBlock(ctx, &pb.GetBlockRequest{Number: 123})
-//	    },
-//	}
-//	result, err := provider.Execute(ctx, op)
 func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
 	if op.Invoke == nil && op.GRPCHandler == nil {
 		return nil, fmt.Errorf("gRPC operation requires Invoke or GRPCHandler function")
@@ -84,9 +100,8 @@ func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
 
 	start := time.Now()
 
-	for attempt := range maxRetries {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			// Simple backoff: 100ms, 200ms
 			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
 		}
 
@@ -105,7 +120,6 @@ func (p *GRPCProvider) Execute(ctx context.Context, op Operation) (any, error) {
 
 		lastErr = err
 
-		// check if retryable
 		if !isRetryableGRPCError(err) {
 			break
 		}
@@ -121,6 +135,10 @@ func isRetryableGRPCError(err error) bool {
 		return false
 	}
 	code := st.Code()
+	// Do not retry 401/403
+	if code == codes.Unauthenticated || code == codes.PermissionDenied {
+		return false
+	}
 	return code == codes.Unavailable || code == codes.ResourceExhausted
 }
 
