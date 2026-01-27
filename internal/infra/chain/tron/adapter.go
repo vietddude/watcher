@@ -387,7 +387,9 @@ func (a *TronAdapter) parseTransaction(
 }
 
 // extractTransferInfo extracts from/to/value and type info from a Tron contract.
-func (a *TronAdapter) extractTransferInfo(contract map[string]any) (from, to, value string, txType domain.TxType, tokenAddr, tokenAmount string) {
+func (a *TronAdapter) extractTransferInfo(
+	contract map[string]any,
+) (from, to, value string, txType domain.TxType, tokenAddr, tokenAmount string) {
 	txType = domain.TxTypeNative
 	contractType, _ := contract["type"].(string)
 	parameter, ok := contract["parameter"].(map[string]any)

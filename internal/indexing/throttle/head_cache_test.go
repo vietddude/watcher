@@ -27,15 +27,26 @@ func (m *mockAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*do
 	return nil, nil
 }
 
-func (m *mockAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+func (m *mockAdapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	return nil, nil
 }
 
-func (m *mockAdapter) FilterTransactions(ctx context.Context, txs []*domain.Transaction, addresses []string) ([]*domain.Transaction, error) {
+func (m *mockAdapter) FilterTransactions(
+	ctx context.Context,
+	txs []*domain.Transaction,
+	addresses []string,
+) ([]*domain.Transaction, error) {
 	return nil, nil
 }
 
-func (m *mockAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+func (m *mockAdapter) VerifyBlockHash(
+	ctx context.Context,
+	blockNumber uint64,
+	expectedHash string,
+) (bool, error) {
 	return true, nil
 }
 

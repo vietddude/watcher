@@ -667,7 +667,8 @@ func (a *Adapter) mapTransaction(
 	tokenAmount := ""
 	for _, bc := range execTx.GetBalanceChanges() {
 		coinType := bc.GetCoinType()
-		isSui := coinType == "0x2::sui::SUI" || coinType == "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+		isSui := coinType == "0x2::sui::SUI" ||
+			coinType == "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
 
 		amountStr := bc.GetAmount()
 		absAmount := amountStr

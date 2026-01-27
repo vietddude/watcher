@@ -271,23 +271,44 @@ func (m *mockTxRepo) SaveBatch(ctx context.Context, txs []*domain.Transaction) e
 	return nil
 }
 
-func (m *mockTxRepo) GetByHash(ctx context.Context, chainID domain.ChainID, txHash string) (*domain.Transaction, error) {
+func (m *mockTxRepo) GetByHash(
+	ctx context.Context,
+	chainID domain.ChainID,
+	txHash string,
+) (*domain.Transaction, error) {
 	return nil, nil
 }
 
-func (m *mockTxRepo) GetByBlock(ctx context.Context, chainID domain.ChainID, blockNumber uint64) ([]*domain.Transaction, error) {
+func (m *mockTxRepo) GetByBlock(
+	ctx context.Context,
+	chainID domain.ChainID,
+	blockNumber uint64,
+) ([]*domain.Transaction, error) {
 	return nil, nil
 }
 
-func (m *mockTxRepo) UpdateStatus(ctx context.Context, chainID domain.ChainID, txHash string, status domain.TxStatus) error {
+func (m *mockTxRepo) UpdateStatus(
+	ctx context.Context,
+	chainID domain.ChainID,
+	txHash string,
+	status domain.TxStatus,
+) error {
 	return nil
 }
 
-func (m *mockTxRepo) DeleteByBlock(ctx context.Context, chainID domain.ChainID, blockNumber uint64) error {
+func (m *mockTxRepo) DeleteByBlock(
+	ctx context.Context,
+	chainID domain.ChainID,
+	blockNumber uint64,
+) error {
 	return nil
 }
 
-func (m *mockTxRepo) DeleteTransactionsOlderThan(ctx context.Context, chainID domain.ChainID, timestamp uint64) error {
+func (m *mockTxRepo) DeleteTransactionsOlderThan(
+	ctx context.Context,
+	chainID domain.ChainID,
+	timestamp uint64,
+) error {
 	return nil
 }
 

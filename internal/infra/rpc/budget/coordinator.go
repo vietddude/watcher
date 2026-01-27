@@ -300,7 +300,11 @@ func (c *Coordinator) Call(
 		c.RecordRequest(p.GetName(), method)
 
 		if err == nil {
-			c.router.RecordSuccess(chainID, p.GetName(), latency) // Fix validation: passing actual latency
+			c.router.RecordSuccess(
+				chainID,
+				p.GetName(),
+				latency,
+			) // Fix validation: passing actual latency
 			return result, nil
 		}
 
@@ -327,7 +331,12 @@ func (c *Coordinator) Call(
 		}
 	}
 
-	return nil, fmt.Errorf("call %s failed after %d failovers: %w", method, MaxFailoverAttempts, lastErr)
+	return nil, fmt.Errorf(
+		"call %s failed after %d failovers: %w",
+		method,
+		MaxFailoverAttempts,
+		lastErr,
+	)
 }
 
 // Execute performs an operation with coordinated budget checking and failover.
@@ -398,7 +407,12 @@ func (c *Coordinator) Execute(
 		}
 	}
 
-	return nil, fmt.Errorf("execute %s failed after %d failovers: %w", op.Name, MaxFailoverAttempts, lastErr)
+	return nil, fmt.Errorf(
+		"execute %s failed after %d failovers: %w",
+		op.Name,
+		MaxFailoverAttempts,
+		lastErr,
+	)
 }
 
 // CallWithCoordination is deprecated. Use Call instead.

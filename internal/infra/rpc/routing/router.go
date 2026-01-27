@@ -205,7 +205,11 @@ func (r *DefaultRouter) GetAllProviders(chainID domain.ChainID) []provider.Provi
 }
 
 // RecordSuccess records a successful call.
-func (r *DefaultRouter) RecordSuccess(_ domain.ChainID, providerName string, latency time.Duration) {
+func (r *DefaultRouter) RecordSuccess(
+	_ domain.ChainID,
+	providerName string,
+	latency time.Duration,
+) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

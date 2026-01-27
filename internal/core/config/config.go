@@ -51,11 +51,11 @@ type ProviderConfig struct {
 
 // AdaptiveThrottlingConfig holds settings for adaptive throttling.
 type AdaptiveThrottlingConfig struct {
-	Enabled           bool          `yaml:"enabled"            mapstructure:"enabled"`
-	MinScanInterval   time.Duration `yaml:"min_scan_interval"  mapstructure:"min_scan_interval"`
-	MaxScanInterval   time.Duration `yaml:"max_scan_interval"  mapstructure:"max_scan_interval"`
-	HeadCacheTTL      time.Duration `yaml:"head_cache_ttl"     mapstructure:"head_cache_ttl"`
-	BatchEnabled      bool          `yaml:"batch_enabled"      mapstructure:"batch_enabled"`
-	MaxBatchSize      int           `yaml:"max_batch_size"     mapstructure:"max_batch_size"`
+	Enabled           bool          `yaml:"enabled"             mapstructure:"enabled"`
+	MinScanInterval   time.Duration `yaml:"min_scan_interval"   mapstructure:"min_scan_interval"`
+	MaxScanInterval   time.Duration `yaml:"max_scan_interval"   mapstructure:"max_scan_interval"`
+	HeadCacheTTL      time.Duration `yaml:"head_cache_ttl"      mapstructure:"head_cache_ttl"`
+	BatchEnabled      bool          `yaml:"batch_enabled"       mapstructure:"batch_enabled"`
+	MaxBatchSize      int           `yaml:"max_batch_size"      mapstructure:"max_batch_size"`
 	LagBurstThreshold int64         `yaml:"lag_burst_threshold" mapstructure:"lag_burst_threshold"`
 }

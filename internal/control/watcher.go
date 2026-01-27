@@ -207,7 +207,11 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 			// The Sui Client now accepts a rpc.Provider
 			adapter = sui.NewAdapter(chainID, coordinatedProvider)
 		case domain.ChainTypeBitcoin:
-			adapter = bitcoin.NewBitcoinAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
+			adapter = bitcoin.NewBitcoinAdapter(
+				chainID,
+				coordinatedProvider,
+				chainCfg.FinalityBlocks,
+			)
 		default:
 			// Use EVM adapter by default
 			adapter = evm.NewEVMAdapter(chainID, coordinatedProvider, chainCfg.FinalityBlocks)
@@ -246,7 +250,15 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 				// Also fetch and save relevant transactions for backfilled blocks
 				txs, err := adapter.GetTransactions(ctx, block)
 				if err != nil {
-					slog.Warn("Failed to fetch transactions for backfill block", "chain", chainID, "block", blockNum, "error", err)
+					slog.Warn(
+						"Failed to fetch transactions for backfill block",
+						"chain",
+						chainID,
+						"block",
+						blockNum,
+						"error",
+						err,
+					)
 					return nil // Don't fail backfill just because tx fetch failed
 				}
 
@@ -260,7 +272,15 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 				if len(relevantTxs) > 0 {
 					if err := txRepo.SaveBatch(ctx, relevantTxs); err != nil {
-						slog.Warn("Failed to save transactions for backfill block", "chain", chainID, "block", blockNum, "error", err)
+						slog.Warn(
+							"Failed to save transactions for backfill block",
+							"chain",
+							chainID,
+							"block",
+							blockNum,
+							"error",
+							err,
+						)
 					}
 				}
 

@@ -360,25 +360,41 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	if p.cfg.DB != nil {
 		uow, err := p.cfg.DB.NewUnitOfWork(ctx)
 		if err != nil {
-			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("failed to create unit of work: %w", err))
+			return false, p.handleError(
+				ctx,
+				targetBlockNum,
+				fmt.Errorf("failed to create unit of work: %w", err),
+			)
 		}
 		defer uow.Rollback()
 
 		// Save block with status already set to processed
 		if err = uow.SaveBlocks(ctx, []*domain.Block{block}); err != nil {
-			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save block failed: %w", err))
+			return false, p.handleError(
+				ctx,
+				targetBlockNum,
+				fmt.Errorf("save block failed: %w", err),
+			)
 		}
 
 		// Save transactions
 		if len(relevantTxs) > 0 {
 			if err = uow.SaveTransactions(ctx, relevantTxs); err != nil {
-				return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("save transactions failed: %w", err))
+				return false, p.handleError(
+					ctx,
+					targetBlockNum,
+					fmt.Errorf("save transactions failed: %w", err),
+				)
 			}
 		}
 
 		// Advance cursor
 		if err = uow.AdvanceCursor(ctx, p.cfg.ChainID, targetBlockNum, block.Hash); err != nil {
-			return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("cursor advance failed: %w", err))
+			return false, p.handleError(
+				ctx,
+				targetBlockNum,
+				fmt.Errorf("cursor advance failed: %w", err),
+			)
 		}
 
 		// Commit all changes atomically

@@ -100,7 +100,11 @@ func (a *EVMAdapter) GetBlockByHash(ctx context.Context, blockHash string) (*dom
 	return a.parseBlock(result.(map[string]any))
 }
 
-func (a *EVMAdapter) VerifyBlockHash(ctx context.Context, blockNumber uint64, expectedHash string) (bool, error) {
+func (a *EVMAdapter) VerifyBlockHash(
+	ctx context.Context,
+	blockNumber uint64,
+	expectedHash string,
+) (bool, error) {
 	block, err := a.GetBlock(ctx, blockNumber)
 	if err != nil {
 		return false, err
@@ -123,7 +127,10 @@ func (a *EVMAdapter) SupportsBloomFilter() bool {
 	return true
 }
 
-func (a *EVMAdapter) GetTransactions(ctx context.Context, block *domain.Block) ([]*domain.Transaction, error) {
+func (a *EVMAdapter) GetTransactions(
+	ctx context.Context,
+	block *domain.Block,
+) ([]*domain.Transaction, error) {
 	// Re-fetch block with FULL transactions
 	blockHex := fmt.Sprintf("0x%x", block.Number)
 	op := rpc.NewHTTPOperation("eth_getBlockByNumber", []any{blockHex, true})
@@ -160,7 +167,10 @@ func (a *EVMAdapter) GetTransactions(ctx context.Context, block *domain.Block) (
 	return txs, nil
 }
 
-func (a *EVMAdapter) parseTransaction(raw map[string]any, block *domain.Block) (*domain.Transaction, error) {
+func (a *EVMAdapter) parseTransaction(
+	raw map[string]any,
+	block *domain.Block,
+) (*domain.Transaction, error) {
 	txIndex, _ := parseHexString(getString(raw["transactionIndex"]))
 
 	// Ensure raw data is preserved for heuristic filtering

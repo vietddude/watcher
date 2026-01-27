@@ -173,7 +173,12 @@ func (u *UnitOfWork) SaveTransactions(ctx context.Context, txs []*domain.Transac
 }
 
 // AdvanceCursor updates the cursor to a new block within the transaction.
-func (u *UnitOfWork) AdvanceCursor(ctx context.Context, chainID domain.ChainID, blockNumber uint64, blockHash string) error {
+func (u *UnitOfWork) AdvanceCursor(
+	ctx context.Context,
+	chainID domain.ChainID,
+	blockNumber uint64,
+	blockHash string,
+) error {
 	return u.queries.UpsertCursorBlock(ctx, sqlc.UpsertCursorBlockParams{
 		ChainID:     string(chainID),
 		BlockNumber: int64(blockNumber),
