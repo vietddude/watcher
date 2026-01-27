@@ -174,10 +174,12 @@ func (s *stubBudgetTracker) RecordCall(providerName, method string) {}
 func (s *stubBudgetTracker) GetProviderUsage(providerName string) budget.UsageStats {
 	return budget.UsageStats{}
 }
-func (s *stubBudgetTracker) CanMakeCall(providerName string) bool               { return true }
-func (s *stubBudgetTracker) GetThrottleDelay(providerName string) time.Duration { return 0 }
-func (s *stubBudgetTracker) GetUsagePercent() float64                           { return 0 }
-func (s *stubBudgetTracker) Reset()                                             {}
+func (s *stubBudgetTracker) CanMakeCall(providerName string) bool { return true }
+func (s *stubBudgetTracker) GetThrottleDelay(chainID domain.ChainID, providerName string) time.Duration {
+	return 0
+}
+func (s *stubBudgetTracker) GetUsagePercent() float64 { return 0 }
+func (s *stubBudgetTracker) Reset()                   {}
 
 type stubRouter struct {
 	rpc.Router

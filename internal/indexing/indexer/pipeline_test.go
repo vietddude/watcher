@@ -38,7 +38,7 @@ func (m *mockAdapter) FilterTransactions(
 	txs []*domain.Transaction,
 	addrs []string,
 ) ([]*domain.Transaction, error) {
-	return nil, nil
+	return txs, nil
 }
 func (m *mockAdapter) VerifyBlockHash(ctx context.Context, num uint64, hash string) (bool, error) {
 	return true, nil

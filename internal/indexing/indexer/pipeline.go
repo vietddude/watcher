@@ -34,6 +34,11 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	}
 	defer p.running.Store(false)
 
+	// Check for empty filter
+	if p.cfg.Filter.Size() == 0 {
+		slog.Warn("Pipeline started with NO monitored addresses. Database will remain empty.", "chain", p.cfg.ChainID)
+	}
+
 	// Use dynamic timer if adaptive controller is available
 	var timer *time.Timer
 	if p.cfg.Controller != nil {
@@ -273,13 +278,20 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 	metrics.BlocksProcessed.WithLabelValues(string(p.cfg.ChainID)).Inc()
 	metrics.IndexerLatestBlock.WithLabelValues(string(p.cfg.ChainID)).Set(float64(targetBlockNum))
 
-	// 5. Filter Transactions using bloom filter
-	var relevantTxs []*domain.Transaction
-	for _, tx := range txs {
-		if p.cfg.Filter.Contains(tx.From) || p.cfg.Filter.Contains(tx.To) {
-			relevantTxs = append(relevantTxs, tx)
-		}
+	// 5. Filter Transactions using chain-specific logic
+	relevantTxs, err := p.cfg.ChainAdapter.FilterTransactions(ctx, txs, p.cfg.Filter.Addresses())
+	if err != nil {
+		return false, p.handleError(ctx, targetBlockNum, fmt.Errorf("filter txs failed: %w", err))
 	}
+
+	slog.Debug(
+		"Filter stats",
+		"chain", p.cfg.ChainID,
+		"block", targetBlockNum,
+		"total_fetched", len(txs),
+		"monitored_addrs", len(p.cfg.Filter.Addresses()),
+		"relevant_count", len(relevantTxs),
+	)
 
 	// Metrics
 	relevantCount := float64(len(relevantTxs))
@@ -386,6 +398,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 					fmt.Errorf("save transactions failed: %w", err),
 				)
 			}
+			slog.Debug("Transactions pending commit", "chain", p.cfg.ChainID, "count", len(relevantTxs))
 		}
 
 		// Advance cursor

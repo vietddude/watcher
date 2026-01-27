@@ -23,6 +23,7 @@ type EVMAdapter struct {
 	bloomFilter     *filter.BloomFilter
 	addressSet      map[string]struct{}
 	lastAddressHash uint64
+	filterMu        sync.RWMutex // Protects addressSet and bloomFilter
 	log             logger.Logger
 
 	// Transaction cache to avoid redundant RPC calls
@@ -228,9 +229,16 @@ func (a *EVMAdapter) FilterTransactions(
 	txs []*domain.Transaction,
 	addresses []string,
 ) ([]*domain.Transaction, error) {
+	// 1. Update filter if needed (Write Lock)
+	a.filterMu.Lock()
 	a.ensureAddressIndex(addresses)
-	filtered := make([]*domain.Transaction, 0)
+	a.filterMu.Unlock()
 
+	// 2. Filter transactions (Read Lock)
+	a.filterMu.RLock()
+	defer a.filterMu.RUnlock()
+
+	filtered := make([]*domain.Transaction, 0)
 	for _, tx := range txs {
 		if a.isRelevantTransaction(tx) {
 			filtered = append(filtered, tx)
@@ -437,9 +445,12 @@ func (a *EVMAdapter) processReceipt(tx *domain.Transaction, receipt map[string]a
 		tokenContract = strings.ToLower(tokenContract)
 
 		// Check if ANY part involves monitored addresses
+		// Lock map for lookup (EnrichTransaction calls this, may be concurrent with Filter update)
+		a.filterMu.RLock()
 		_, fromMonitored := a.addressSet[tokenFrom]
 		_, toMonitored := a.addressSet[tokenTo]
 		_, contractMonitored := a.addressSet[tokenContract]
+		a.filterMu.RUnlock()
 
 		if fromMonitored || toMonitored || contractMonitored {
 			tokenValue := "0"
@@ -472,16 +483,18 @@ func (a *EVMAdapter) processReceipt(tx *domain.Transaction, receipt map[string]a
 	// Store ALL relevant transfers
 	if len(relevantTransfers) > 0 {
 		tx.Type = domain.TxTypeERC20
+		// Use the first transfer as the primary token info for the main columns
+		tx.TokenAddress = relevantTransfers[0]["contract"]
+		tx.TokenAmount = relevantTransfers[0]["value"]
+
 		// If only one transfer, simplify storage
 		if len(relevantTransfers) == 1 {
 			tx.RawData, _ = json.Marshal(relevantTransfers[0])
 			// Update tx fields to reflect the transfer
 			tx.To = relevantTransfers[0]["to"]
 			tx.Value = relevantTransfers[0]["value"]
-			tx.TokenAddress = relevantTransfers[0]["contract"]
-			tx.TokenAmount = relevantTransfers[0]["value"]
 		} else {
-			// Multiple transfers - store as array
+			// Multiple transfers - store as array in RawData
 			enrichedData := map[string]any{
 				"type":      "ERC20_MULTIPLE",
 				"transfers": relevantTransfers,

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"sync"
@@ -349,22 +351,10 @@ func (a *Adapter) GetTransactions(
 		op := rpc.NewGRPCOperation(
 			"GetCheckpointDetails",
 			func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
-				mask, err := fieldmaskpb.New(
-					&suipb.Checkpoint{},
-					"sequence_number",
-					"digest",
-					"summary",
-					"transactions",
-				)
-				if err != nil {
-					return nil, err
-				}
-
 				req := &suipb.GetCheckpointRequest{
 					CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
 						SequenceNumber: block.Number,
 					},
-					ReadMask: mask,
 				}
 				return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
 			},
@@ -409,7 +399,7 @@ func (a *Adapter) FilterTransactions(
 	var filtered []*domain.Transaction
 	for _, tx := range txs {
 		// 1. Check Sender
-		if addressSet[tx.From] {
+		if addressSet[strings.ToLower(tx.From)] {
 			filtered = append(filtered, tx)
 			continue
 		}
@@ -419,10 +409,11 @@ func (a *Adapter) FilterTransactions(
 			var recipients []string
 			if err := json.Unmarshal(tx.RawData, &recipients); err == nil {
 				for _, r := range recipients {
-					if addressSet[r] {
+					lowerR := strings.ToLower(r)
+					if addressSet[lowerR] {
 						// Overwrite heuristic "To" with the matched monitored address
 						// to ensure it's easily queryable.
-						tx.To = r
+						tx.To = lowerR
 						filtered = append(filtered, tx)
 						goto nextTx
 					}
@@ -431,7 +422,7 @@ func (a *Adapter) FilterTransactions(
 		}
 
 		// 3. Last resort: check heuristic To (already set in mapTransaction)
-		if tx.To != "" && addressSet[tx.To] {
+		if tx.To != "" && addressSet[strings.ToLower(tx.To)] {
 			filtered = append(filtered, tx)
 		}
 
@@ -529,18 +520,10 @@ func (a *Adapter) HasRelevantTransactions(
 		op := rpc.NewGRPCOperation(
 			"GetCheckpointOwners",
 			func(ctx context.Context, conn grpc.ClientConnInterface) (any, error) {
-				mask, err := fieldmaskpb.New(&suipb.Checkpoint{},
-					"transactions",
-				)
-				if err != nil {
-					return nil, err
-				}
-
 				req := &suipb.GetCheckpointRequest{
 					CheckpointId: &suipb.GetCheckpointRequest_SequenceNumber{
 						SequenceNumber: block.Number,
 					},
-					ReadMask: mask,
 				}
 				return suipb.NewLedgerServiceClient(conn).GetCheckpoint(ctx, req)
 			},
@@ -565,7 +548,7 @@ func (a *Adapter) HasRelevantTransactions(
 	for _, tx := range cp.GetTransactions() {
 		// Check Sender
 		if tx.Transaction != nil {
-			if _, ok := addrMap[tx.Transaction.GetSender()]; ok {
+			if _, ok := addrMap[strings.ToLower(tx.Transaction.GetSender())]; ok {
 				return true, nil
 			}
 		}
@@ -579,8 +562,9 @@ func (a *Adapter) HasRelevantTransactions(
 				}
 				// We only care about Address owners (Kind=1)
 				// Use the accessor to be safe with proto oneofs
-				if owner.GetAddress() != "" {
-					if _, ok := addrMap[owner.GetAddress()]; ok {
+				addr := strings.ToLower(owner.GetAddress())
+				if addr != "" {
+					if _, ok := addrMap[addr]; ok {
 						return true, nil
 					}
 				}
@@ -665,7 +649,11 @@ func (a *Adapter) mapTransaction(
 	txType := domain.TxTypeNative
 	tokenAddr := ""
 	tokenAmount := ""
-	for _, bc := range execTx.GetBalanceChanges() {
+	balanceChanges := execTx.GetBalanceChanges()
+	if len(balanceChanges) > 0 {
+		slog.Debug("Processing balance changes", "tx", execTx.GetDigest(), "count", len(balanceChanges))
+	}
+	for _, bc := range balanceChanges {
 		coinType := bc.GetCoinType()
 		isSui := coinType == "0x2::sui::SUI" ||
 			coinType == "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
@@ -680,6 +668,7 @@ func (a *Adapter) mapTransaction(
 			txType = domain.TxTypeToken
 			tokenAddr = coinType
 			tokenAmount = absAmount
+			slog.Debug("Detected token transfer in balance changes", "tx", execTx.GetDigest(), "coin", coinType, "amount", absAmount)
 		}
 
 		addr := bc.GetAddress()

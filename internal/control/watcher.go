@@ -262,12 +262,22 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 					return nil // Don't fail backfill just because tx fetch failed
 				}
 
-				var relevantTxs []*domain.Transaction
-				for _, tx := range txs {
-					if simpleFilter.Contains(tx.From) || simpleFilter.Contains(tx.To) {
-						tx.ChainID = block.ChainID
-						relevantTxs = append(relevantTxs, tx)
-					}
+				relevantTxs, err := adapter.FilterTransactions(ctx, txs, simpleFilter.Addresses())
+				if err != nil {
+					slog.Warn(
+						"Failed to filter transactions for backfill block",
+						"chain",
+						chainID,
+						"block",
+						blockNum,
+						"error",
+						err,
+					)
+					return nil
+				}
+
+				for _, tx := range relevantTxs {
+					tx.ChainID = block.ChainID
 				}
 
 				if len(relevantTxs) > 0 {
