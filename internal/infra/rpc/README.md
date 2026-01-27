@@ -8,7 +8,7 @@
 > * Multi-provider RPC (Alchemy, Infura, custom nodes)
 > * Automatic retry, failover, and rotation
 > * Budget / quota tracking
-> * Health monitoring
+> * Health monitoring / Circuit Breaking
 > * Support for **both JSON-RPC and gRPC generated clients**
 >
 > The size and structure are intentional.
@@ -47,27 +47,30 @@ graph TD
 ## Quick Start (JSON-RPC)
 
 ```go
-import "github.com/vietddude/watcher/internal/infra/rpc"
+import (
+    "github.com/vietddude/watcher/internal/infra/rpc"
+    "github.com/vietddude/watcher/internal/core/domain"
+)
 
 // 1. Create providers
 alchemy := rpc.NewHTTPProvider("alchemy", os.Getenv("ALCHEMY_URL"), 30*time.Second)
 infura := rpc.NewHTTPProvider("infura", os.Getenv("INFURA_URL"), 30*time.Second)
 
-// 2. Setup budget tracker
-budget := rpc.NewBudgetTracker(100000, map[string]float64{
-    "ethereum": 1.0,
-})
+// 2. Setup budget tracker and set quotas
+budget := rpc.NewBudgetTracker()
+budget.SetProviderQuota("alchemy", 100000)
+budget.SetProviderQuota("infura", 100000)
 
 // 3. Setup router with rotation strategy
 router := rpc.NewRouterWithStrategy(budget, rpc.RotationProactive)
-router.AddProvider("ethereum", alchemy)
-router.AddProvider("ethereum", infura)
+router.AddProvider("ETHEREUM_MAINNET", alchemy)
+router.AddProvider("ETHEREUM_MAINNET", infura)
 
 // 4. Create coordinator
 coordinator := rpc.NewCoordinator(router, budget)
 
 // 5. Create client
-client := rpc.NewClientWithCoordinator("ethereum", coordinator)
+client := rpc.NewClientWithCoordinator("ETHEREUM_MAINNET", coordinator)
 
 // 6. Make calls (legacy JSON-RPC API)
 result, err := client.Call(ctx, "eth_blockNumber", nil)
@@ -80,7 +83,7 @@ result, err := client.Call(ctx, "eth_blockNumber", nil)
 
 ## Operation Model
 
-The `Operation` abstraction allows the coordinator to execute requests across different protocols seamlessly.
+The `Operation` abstraction allows the coordinator to execute requests across different protocols (HTTP, gRPC, REST) seamlessly.
 
 ### Supported Protocols
 
@@ -90,11 +93,11 @@ The `Operation` abstraction allows the coordinator to execute requests across di
 
 2. **JSON-RPC 1.0**
    - Required for Bitcoin (strict 1.0 compliance).
-   - Use `NewJSONRPC10Operation` (omits version field, handles null params).
+   - Use `NewJSONRPC10Operation`.
 
 3. **REST**
-   - Required for Tron.
-   - Use `NewRESTOperation` (supports methods, headers, and arbitrary bodies).
+   - Required for Sui (Legacy) or custom APIs.
+   - Use `NewRESTOperation`.
 
 4. **gRPC**
    - Required for Sui, Solana, etc.
@@ -115,15 +118,15 @@ result, err := client.Execute(ctx, op)
 ### 2. HTTP JSON-RPC 1.0 (Bitcoin)
 
 ```go
-// Helper handles version 1.0 quarks (no jsonrpc field, null params)
+// Helper handles version 1.0 quirks (no jsonrpc field, handles positional params)
 op := rpc.NewJSONRPC10Operation("getblockcount")
 result, err := client.Execute(ctx, op)
 ```
 
-### 3. HTTP REST (Tron)
+### 3. HTTP REST
 
 ```go
-// Execute: POST /wallet/getnowblock
+// Example: POST /wallet/getnowblock
 op := rpc.NewRESTOperation("wallet/getnowblock", "POST", nil)
 result, err := client.Execute(ctx, op)
 ```
@@ -152,6 +155,7 @@ result, err := client.Execute(ctx, op)
 | **Router**          | Selects best provider based on health and availability |
 | **BudgetTracker**   | Manages quota limits and throttling                    |
 | **ProviderMonitor** | Tracks latency, errors, and provider health            |
+| **CircuitBreaker**  | (Internal) Protects against failing nodes              |
 
 ---
 
@@ -184,22 +188,18 @@ result, err := client.Execute(ctx, op)
 `ProviderMonitor.GetHealthScore()` returns a normalized score **0–100**:
 
 * **Status**
-
-  * Blocked: `0`
+  * Blocked: `0` (Returns immediately)
   * Throttled: `-60`
   * Degraded: `-30`
 * **Latency**
-
   * > 3s: `-30`
   * > 2s: `-20`
   * > 1s: `-10`
 * **Usage**
-
   * > 90%: `-30`
   * > 75%: `-15`
   * > 50%: `-5`
 * **Errors**
-
   * HTTP 429: `-3` per error
   * HTTP 403: `-8` per error
 
@@ -221,12 +221,5 @@ coordinator := rpc.NewCoordinatorWithConfig(router, budget, config)
 
 ### Final Note
 
-This package is designed to be **stable and reused** across:
-
-* blockchain indexers
-* watcher jobs
-* gRPC-based internal services
-* future MPC / wallet infrastructure
-
-If you feel the code looks “large”, that is expected.
-**The complexity is intentional and centralized here.**
+This package is designed to be **stable and reused** across all indexers and watcher jobs.
+The complexity is intentional and centralized here to keep the indexing logic clean.
