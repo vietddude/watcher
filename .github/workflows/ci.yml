@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+      - name: golangci-lint
+        uses: golangci-lint/golangci-lint-action@v4
+        with:
+          version: latest
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: watcher
+          POSTGRES_PASSWORD: watcher123
+          POSTGRES_DB: watcher
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+      
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run Migrations
+        run: |
+          go run github.com/pressly/goose/v3/cmd/goose -dir migrations postgres "postgres://watcher:watcher123@localhost:5432/watcher?sslmode=disable" up
+
+      - name: Run Unit & Integration Tests
+        run: go test -v ./...
+
+      - name: Run E2E Tests
+        # We'll run these once the e2e folder exists
+        run: |
+          if [ -d "tests/e2e" ]; then
+            go test -v ./tests/e2e/...
+          else
+            echo "E2E directory not found, skipping."
+          fi

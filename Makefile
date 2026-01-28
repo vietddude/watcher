@@ -18,8 +18,12 @@ run: build
 	@./bin/$(BINARY_NAME)
 
 test:
-	@echo "Running tests..."
-	@go test -v ./...
+	@echo "Running unit and integration tests..."
+	@go test -v ./internal/...
+
+test-e2e:
+	@echo "Running live E2E tests (requires E2E_LIVE=true)..."
+	@E2E_LIVE=true go test -v ./tests/e2e/...
 
 clean:
 	@echo "Cleaning..."

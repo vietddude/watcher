@@ -1,10 +1,22 @@
 groups:
   - name: watcher
     rules:
+      - alert: IndexerCriticalLag
+        expr: |
+          (watcher_chain_latest_block - watcher_indexer_latest_block) > 1000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL: Indexer is >1000 blocks behind on {{ $labels.chain }}"
+          description: "Indexer is lagging behind the chain head by {{ $value }} blocks. Immediate investigation required."
+
       - alert: IndexerFallingBehind
         expr: |
           (watcher_chain_latest_block - watcher_indexer_latest_block) > 100
         for: 5m
+        labels:
+          severity: warning
         annotations:
           summary: "Indexer is >100 blocks behind on {{ $labels.chain }}"
           description: "Indexer is lagging behind the chain head by {{ $value }} blocks."
@@ -13,13 +25,27 @@ groups:
         expr: |
           rate(watcher_rpc_errors_total[5m]) / rate(watcher_rpc_calls_total[5m]) > 0.1
         for: 5m
+        labels:
+          severity: warning
         annotations:
           summary: "Provider {{ $labels.provider }} has >10% error rate"
           description: "RPC Provider {{ $labels.provider }} on chain {{ $labels.chain }} is experiencing high error rate."
       
+      - alert: FrequentReorgs
+        expr: |
+          rate(watcher_reorgs_total[30m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High reorg frequency on {{ $labels.chain }}"
+          description: "More than 3 reorgs detected in the last 30 minutes on chain {{ $labels.chain }}."
+
       - alert: QuotaNearExhaustion
         expr: |
           watcher_rpc_quota_remaining < (watcher_rpc_quota_total * 0.1)
+        labels:
+          severity: warning
         annotations:
           summary: "Provider {{ $labels.provider }} quota >90% consumed"
           description: "Less than 10% quota remaining for provider {{ $labels.provider }}."

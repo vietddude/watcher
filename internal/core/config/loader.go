@@ -16,7 +16,9 @@ func Load(path string) (*AppConfig, error) {
 	}
 
 	var cfg AppConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	// Expand environment variables in the YAML content
+	expandedData := os.ExpandEnv(string(data))
+	if err := yaml.Unmarshal([]byte(expandedData), &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 

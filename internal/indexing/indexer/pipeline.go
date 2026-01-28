@@ -59,7 +59,13 @@ func (p *Pipeline) Start(ctx context.Context) error {
 		shouldContinue, err := p.processNextBlock(ctx)
 		if err != nil {
 			slog.Error("Block processing error", "error", err)
-			time.Sleep(time.Second)
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return nil
+			case <-p.stop:
+				return nil
+			}
 		} else if shouldContinue {
 			// Burst mode: don't wait for timer
 			select {
@@ -97,7 +103,13 @@ func (p *Pipeline) runWithStaticTicker(ctx context.Context, ticker *time.Ticker)
 		shouldContinue, err := p.processNextBlock(ctx)
 		if err != nil {
 			slog.Error("Block processing error", "error", err)
-			time.Sleep(time.Second)
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return nil
+			case <-p.stop:
+				return nil
+			}
 		} else if shouldContinue {
 			// Burst mode: don't wait for ticker
 			select {

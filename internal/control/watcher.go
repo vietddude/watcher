@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/vietddude/watcher/internal/core/config"
@@ -44,6 +45,7 @@ type Watcher struct {
 	redisClient   *redisclient.Client
 	log           *slog.Logger
 	coordinators  map[domain.ChainID]*rpc.Coordinator
+	wg            sync.WaitGroup
 }
 
 // Config holds the application configuration.
@@ -433,24 +435,30 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 // Start starts the watcher and all its components.
 func (w *Watcher) Start(ctx context.Context) error {
 	// Start Health Server
-	go func() {
+	w.wg.Go(func() {
 		if err := w.healthServer.Start(); err != nil {
 			w.log.Error("Health server failed", "error", err)
 		}
-	}()
+	})
 
 	// Start Health Monitor Background Tasks
-	go w.healthMon.Start(ctx)
+	w.wg.Go(func() {
+		w.healthMon.Start(ctx)
+	})
 
 	// Start DB Metrics Collector
 	if w.db != nil {
-		w.db.StartMetricsCollector(ctx)
+		w.wg.Go(func() {
+			w.db.StartMetricsCollector(ctx)
+		})
 	}
 
 	// Start Indexers and Backfillers
 	for id, idx := range w.indexers {
 		w.log.Info("Starting indexer", "chain", id)
+		w.wg.Add(1)
 		go func(id domain.ChainID, i indexer.Indexer) {
+			defer w.wg.Done()
 			if err := i.Start(ctx); err != nil {
 				w.log.Error("Indexer failed", "chain", id, "error", err)
 			}
@@ -459,7 +467,9 @@ func (w *Watcher) Start(ctx context.Context) error {
 		// Start Backfiller
 		if bf, ok := w.backfillers[id]; ok {
 			w.log.Info("Starting backfill processor", "chain", id)
+			w.wg.Add(1)
 			go func(id domain.ChainID, processor *backfill.Processor) {
+				defer w.wg.Done()
 				if err := processor.Run(ctx, id); err != nil {
 					w.log.Error("Backfill processor failed", "chain", id, "error", err)
 				}
@@ -470,7 +480,9 @@ func (w *Watcher) Start(ctx context.Context) error {
 	// Start Rescan Workers
 	for id, worker := range w.rescanWorkers {
 		w.log.Info("Starting rescan worker", "chain", id)
+		w.wg.Add(1)
 		go func(id domain.ChainID, wrk *rescan.Worker) {
+			defer w.wg.Done()
 			if err := wrk.Run(ctx); err != nil {
 				w.log.Error("Rescan worker failed", "chain", id, "error", err)
 			}
@@ -480,11 +492,17 @@ func (w *Watcher) Start(ctx context.Context) error {
 	// Start Pruners
 	for id, p := range w.pruners {
 		w.log.Info("Starting pruner", "chain", id)
-		go p.Start(ctx)
+		w.wg.Add(1)
+		go func(p *worker.Pruner) {
+			defer w.wg.Done()
+			p.Start(ctx)
+		}(p)
 	}
 
 	// Start RPC Metrics Updater
-	go w.runMetricsUpdater(ctx)
+	w.wg.Go(func() {
+		w.runMetricsUpdater(ctx)
+	})
 
 	return nil
 }
@@ -493,20 +511,39 @@ func (w *Watcher) Start(ctx context.Context) error {
 func (w *Watcher) Stop(ctx context.Context) error {
 	w.log.Info("Stopping Watcher...")
 
-	// Stop Indexers
+	// 1. Stop components with explicit Stop methods
 	for _, idx := range w.indexers {
 		idx.Stop()
 	}
 
-	// Close Redis
+	if w.healthServer != nil {
+		if err := w.healthServer.Stop(ctx); err != nil {
+			w.log.Warn("Failed to stop health server", "error", err)
+		}
+	}
+
+	// 2. Close Redis
 	if w.redisClient != nil {
 		if err := w.redisClient.Close(); err != nil {
 			w.log.Warn("Failed to close Redis", "error", err)
 		}
 	}
 
-	// Stop Health Server
-	return w.healthServer.Stop(ctx)
+	// 3. Wait for all goroutines to finish
+	done := make(chan struct{})
+	go func() {
+		w.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		w.log.Info("All background workers stopped safely")
+	case <-ctx.Done():
+		w.log.Warn("Shutdown timed out, some workers may still be running", "error", ctx.Err())
+	}
+
+	return nil
 }
 
 // MultiChainFetcher adapts chain adapters to BlockHeightFetcher interface

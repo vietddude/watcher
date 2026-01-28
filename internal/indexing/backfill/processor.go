@@ -163,13 +163,25 @@ func (p *Processor) Run(ctx context.Context, chainID domain.ChainID) error {
 			err := p.ProcessOne(ctx, chainID, chainName)
 			if errors.Is(err, ErrNoMissingBlocks) {
 				// Queue empty, wait before checking again
-				time.Sleep(30 * time.Second)
+				select {
+				case <-time.After(30 * time.Second):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			} else if errors.Is(err, ErrQuotaExceeded) {
 				// Quota too high, wait longer
-				time.Sleep(5 * time.Minute)
+				select {
+				case <-time.After(5 * time.Minute):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			} else if err != nil {
 				// Other error, brief pause
-				time.Sleep(5 * time.Second)
+				select {
+				case <-time.After(5 * time.Second):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 		}
 	}

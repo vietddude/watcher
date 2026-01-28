@@ -83,13 +83,21 @@ func (w *Worker) Run(ctx context.Context) error {
 		start, end, found, err := w.redis.PopRange(ctx, w.internalCode)
 		if err != nil {
 			w.log.Error("Failed to pop range", "error", err)
-			time.Sleep(w.cfg.EmptySleep)
+			select {
+			case <-time.After(w.cfg.EmptySleep):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 			continue
 		}
 
 		if !found {
 			// Queue empty, sleep
-			time.Sleep(w.cfg.EmptySleep)
+			select {
+			case <-time.After(w.cfg.EmptySleep):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 			continue
 		}
 
