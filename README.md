@@ -203,6 +203,37 @@ See the [Troubleshooting Guide](docs/troubleshooting.md) for FAQs on:
 | `make test`       | Run tests         |
 | `make docker-up`  | Start infra       |
 | `make migrate-up` | Run DB migrations |
+| `make test`       | Run all tests     |
+
+## Testing
+
+Watcher has a comprehensive test suite covering unit, integration, and end-to-end (E2E) scenarios.
+
+### Unit & Integration Tests
+Run standard tests that don't require external networks:
+```bash
+make test
+# or
+go test ./...
+```
+
+### Live E2E Tests
+To run tests that connect to **real public RPC endpoints** (Ethereum Mainnet, Sui Mainnet) and a local database, set the `E2E_LIVE` environment variable:
+
+```bash
+E2E_LIVE=true make test-e2e
+```
+
+**Prerequisites for E2E:**
+*   Internet access (to reach `ethereum-rpc.publicnode.com` etc.)
+*   Local PostgreSQL running on default port `5432` (user: `watcher`, pass: `watcher123`)
+
+## CI/CD Service
+
+This project uses **GitHub Actions** for continuous integration.
+
+*   **Push/PR**: Runs `golangci-lint` and standard unit/integration tests (`go test ./...`).
+*   **Manual/Schedule**: Runs the full **Live E2E** suite (`env E2E_LIVE=true`) using a service container for PostgreSQL. This validates the indexer against real chain data.
 
 ## Mental model
 
