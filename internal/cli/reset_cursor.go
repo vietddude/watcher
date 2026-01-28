@@ -44,7 +44,9 @@ func runResetCursor(cmd *cobra.Command, args []string) {
 		slog.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	// Update cursor
 	// We'll use a direct SQL query or a repo if available.

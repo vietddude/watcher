@@ -7,8 +7,8 @@ import (
 
 func TestLoad_EnvSubstitution(t *testing.T) {
 	// Setup env var
-	os.Setenv("TEST_DB_URL", "postgres://user:pass@localhost:5433/db")
-	defer os.Unsetenv("TEST_DB_URL")
+	_ = os.Setenv("TEST_DB_URL", "postgres://user:pass@localhost:5433/db")
+	defer func() { _ = os.Unsetenv("TEST_DB_URL") }()
 
 	// Create temp config file
 	configContent := `
@@ -19,12 +19,12 @@ database:
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write([]byte(configContent)); err != nil {
 		t.Fatalf("Failed to write to temp file: %v", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Load config
 	cfg, err := Load(tmpFile.Name())

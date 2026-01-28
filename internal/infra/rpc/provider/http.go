@@ -88,7 +88,7 @@ func (p *HTTPProvider) callRPC(
 		p.RecordFailure()
 		return nil, fmt.Errorf("rpc call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	latency := time.Since(start)
 
@@ -190,7 +190,7 @@ func (p *HTTPProvider) BatchCall(
 		p.RecordFailure()
 		return nil, fmt.Errorf("batch call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -294,7 +294,7 @@ func (p *HTTPProvider) executeREST(ctx context.Context, op Operation) (any, erro
 		p.RecordFailure()
 		return nil, fmt.Errorf("rest call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	latency := time.Since(start)
 

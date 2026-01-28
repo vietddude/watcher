@@ -78,9 +78,9 @@ func (r *mockBlockRepo) DeleteBlocksOlderThan(
 }
 
 type mockMissingRepo struct {
-	mu       sync.Mutex
-	blocks   []*domain.MissingBlock
-	nextIdx  int
+	mu     sync.Mutex
+	blocks []*domain.MissingBlock
+	// nextIdx  int
 	addCount int
 }
 

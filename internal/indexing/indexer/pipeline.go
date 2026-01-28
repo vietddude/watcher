@@ -414,7 +414,7 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 				fmt.Errorf("failed to create unit of work: %w", err),
 			)
 		}
-		defer uow.Rollback()
+		defer func() { _ = uow.Rollback() }()
 
 		// Save block with status already set to processed
 		if err = uow.SaveBlocks(ctx, []*domain.Block{block}); err != nil {

@@ -28,7 +28,7 @@ func setupTestDB(t *testing.T, dbName string) *sql.DB {
 	if err != nil {
 		t.Fatalf("Failed to connect to root postgres: %v", err)
 	}
-	defer rootDB.Close()
+	defer func() { _ = rootDB.Close() }()
 
 	// Drop and recreate test DB
 	_, _ = rootDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName))
@@ -66,7 +66,7 @@ func TestEVMIndexing_Live(t *testing.T) {
 
 	dbName := "watcher_test_evm"
 	testDB := setupTestDB(t, dbName)
-	defer testDB.Close()
+	defer func() { _ = testDB.Close() }()
 
 	// Seed monitored address
 	_, err := testDB.Exec("INSERT INTO wallet_addresses (address, network_type, standard) VALUES ($1, $2, $3)", BinanceWallet, "evm", "erc20")
@@ -147,7 +147,7 @@ func TestSuiIndexing_Live(t *testing.T) {
 
 	dbName := "watcher_test_sui"
 	testDB := setupTestDB(t, dbName)
-	defer testDB.Close()
+	defer func() { _ = testDB.Close() }()
 
 	// Generic active Sui address (or we can just watch "any" and see if blocks come in)
 	// For E2E we usually want to verify we can capture *something*.

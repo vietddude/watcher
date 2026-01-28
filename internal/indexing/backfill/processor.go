@@ -112,7 +112,7 @@ func (p *Processor) ProcessOne(
 	success := true
 	for blockNum := missing.FromBlock; blockNum <= missing.ToBlock; blockNum++ {
 		if err := p.fetcher(chainID, blockNum); err != nil {
-			success = false
+			// success = false
 			// If we fail to fetch a block, we should probably stop entirely for this batch
 			// and return error so the main loop can sleep.
 			return fmt.Errorf("fetch failed for block %d: %w", blockNum, err)
@@ -129,7 +129,7 @@ func (p *Processor) ProcessOne(
 		// This path is now unreachable because we return early on failure,
 		// but keeping logic clean if we change strategy later.
 		if missing.RetryCount >= p.config.MaxRetries {
-			p.missingRepo.MarkFailed(ctx, missing.ID, "max retries exceeded")
+			_ = p.missingRepo.MarkFailed(ctx, missing.ID, "max retries exceeded")
 			p.recordFailed(chainID)
 		}
 	}
@@ -157,7 +157,7 @@ func (p *Processor) Run(ctx context.Context, chainID domain.ChainID) error {
 				metrics.BackfillBlocksQueued.WithLabelValues(chainName).Set(float64(count))
 			} else {
 				// Log error to ensure visibility? processor doesn't have logger, but Count shouldn't fail often.
-				// We can try to init metrics at least.
+				_ = err // We can try to init metrics at least.
 			}
 		default:
 			err := p.ProcessOne(ctx, chainID, chainName)

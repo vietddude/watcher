@@ -72,7 +72,7 @@ func NewGRPCProvider(ctx context.Context, name, endpoint string) (*GRPCProvider,
 		))
 	}
 
-	conn, err := grpc.DialContext(ctx, target, opts...)
+	conn, err := grpc.NewClient(target, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial grpc endpoint %s: %w", target, err)
 	}

@@ -106,9 +106,8 @@ func (p *BaseProvider) RecordFailure() {
 
 // HasCapacity checks if the provider has capacity for the given cost.
 func (p *BaseProvider) HasCapacity(cost int) bool {
-	if cost <= 0 {
-		cost = 1
-	}
+	// if cost <= 0 { cost = 1 }
+	_ = cost
 
 	status := p.Monitor.CheckProviderStatus()
 	if status == StatusThrottled || status == StatusBlocked {

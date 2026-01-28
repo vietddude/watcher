@@ -46,8 +46,8 @@ func TestFinalityBuffer_QueueAndEmit(t *testing.T) {
 	event2 := &domain.Event{BlockNumber: 101}
 
 	// Queue events
-	buffer.QueueEvent(ctx, event1)
-	buffer.QueueEvent(ctx, event2)
+	_ = buffer.QueueEvent(ctx, event1)
+	_ = buffer.QueueEvent(ctx, event2)
 
 	// Verify pending
 	if count := buffer.PendingCount(100); count != 1 {
@@ -55,14 +55,14 @@ func TestFinalityBuffer_QueueAndEmit(t *testing.T) {
 	}
 
 	// New block 105: (105 - 100 = 5) < 10. Should NOT emit.
-	buffer.OnNewBlock(ctx, 105)
+	_ = buffer.OnNewBlock(ctx, 105)
 	if len(mock.EmittedEvents) != 0 {
 		t.Errorf("expected 0 emitted events, got %d", len(mock.EmittedEvents))
 	}
 
 	// New block 110: (110 - 100 = 10) >= 10. Should emit block 100.
 	// Block 101: (110 - 101 = 9) < 10. Should keep block 101.
-	buffer.OnNewBlock(ctx, 110)
+	_ = buffer.OnNewBlock(ctx, 110)
 
 	if len(mock.EmittedEvents) != 1 {
 		t.Fatalf("expected 1 emitted event, got %d", len(mock.EmittedEvents))
@@ -87,7 +87,7 @@ func TestFinalityBuffer_DiscardBlock(t *testing.T) {
 	ctx := context.Background()
 
 	event := &domain.Event{BlockNumber: 100}
-	buffer.QueueEvent(ctx, event)
+	_ = buffer.QueueEvent(ctx, event)
 
 	// Reorg detected! Discard block 100
 	buffer.DiscardBlock(100)
@@ -97,7 +97,7 @@ func TestFinalityBuffer_DiscardBlock(t *testing.T) {
 	}
 
 	// Advance chain far ahead
-	buffer.OnNewBlock(ctx, 200)
+	_ = buffer.OnNewBlock(ctx, 200)
 
 	// Should emit nothing because it was discarded
 	if len(mock.EmittedEvents) != 0 {
@@ -113,7 +113,7 @@ func TestFinalityBuffer_ZeroConfirmations(t *testing.T) {
 	event := &domain.Event{BlockNumber: 100}
 
 	// Should emit immediately
-	buffer.QueueEvent(ctx, event)
+	_ = buffer.QueueEvent(ctx, event)
 
 	if len(mock.EmittedEvents) != 1 {
 		t.Errorf("expected 1 emitted event immediately, got %d", len(mock.EmittedEvents))
@@ -126,12 +126,12 @@ func TestFinalityBuffer_MultipleBlocksEmit(t *testing.T) {
 	ctx := context.Background()
 
 	// Blocks 100, 101, 102
-	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 100, EmittedAt: uint64(time.Now().Unix())})
-	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 101, EmittedAt: uint64(time.Now().Unix())})
-	buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 102, EmittedAt: uint64(time.Now().Unix())})
+	_ = buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 100, EmittedAt: uint64(time.Now().Unix())})
+	_ = buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 101, EmittedAt: uint64(time.Now().Unix())})
+	_ = buffer.QueueEvent(ctx, &domain.Event{BlockNumber: 102, EmittedAt: uint64(time.Now().Unix())})
 
 	// Jump to block 200 (finalizes all)
-	buffer.OnNewBlock(ctx, 200)
+	_ = buffer.OnNewBlock(ctx, 200)
 
 	if len(mock.EmittedEvents) != 3 {
 		t.Errorf("expected 3 emitted events, got %d", len(mock.EmittedEvents))

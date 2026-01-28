@@ -25,10 +25,11 @@ func TestHTTPProvider_Execute_JSONRPC10(t *testing.T) {
 
 		// Verify Params is null if empty
 		if req["params"] != nil {
-			// If we passed params, verify they are correct
+			t.Logf("Params checked: %v", req["params"])
+			t.Logf("Params: %v", req["params"])
 		} else {
 			// For getblockcount, params should be null (or omitted, but 1.0 likes null)
-			// Bitcoin adapter passes NewJSONRPC10Operation("getblockcount") -> params is []
+			t.Log("No params expected") // Bitcoin adapter behavior note
 		}
 
 		response := map[string]any{
@@ -36,7 +37,7 @@ func TestHTTPProvider_Execute_JSONRPC10(t *testing.T) {
 			"error":  nil,
 			"id":     req["id"],
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -76,7 +77,7 @@ func TestHTTPProvider_Execute_JSONRPC20_Default(t *testing.T) {
 			"error":  nil,
 			"id":     req["id"],
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

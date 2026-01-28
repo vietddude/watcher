@@ -71,10 +71,10 @@ func setupTestAdapter(t *testing.T, server *MockLedgerServer) *Adapter {
 
 	s := grpc.NewServer()
 	v2.RegisterLedgerServiceServer(s, server)
-	go s.Serve(lis)
+	go func() { _ = s.Serve(lis) }()
 
 	// Connect
-	conn, err := grpc.Dial(
+	conn, err := grpc.NewClient(
 		lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -83,7 +83,7 @@ func setupTestAdapter(t *testing.T, server *MockLedgerServer) *Adapter {
 	}
 
 	t.Cleanup(func() {
-		conn.Close()
+		_ = conn.Close()
 		s.Stop()
 	})
 

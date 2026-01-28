@@ -140,7 +140,7 @@ func (m *mockCursorMgr) GetMetrics(
 func (m *mockCursorMgr) SetStateChangeCallback(fn func(domain.ChainID, cursor.Transition)) {}
 
 type mockFilter struct {
-	events []*domain.Event
+	// events []*domain.Event
 }
 
 // Since we removed Process from Filter interface and pipeline does manual check,

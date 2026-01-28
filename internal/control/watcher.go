@@ -99,7 +99,7 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 		// Populate filter
 		for _, w := range wallets {
-			simpleFilter.Add(w.Address)
+			_ = simpleFilter.Add(w.Address)
 		}
 		slog.Info("Loaded wallet addresses into filter", "count", len(wallets))
 
@@ -138,7 +138,6 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 	indexers := make(map[domain.ChainID]indexer.Indexer)
 	backfillers := make(map[domain.ChainID]*backfill.Processor)
 	coordinators := make(map[domain.ChainID]*rpc.Coordinator)
-	chainIDs := make([]domain.ChainID, 0, len(cfg.Chains))
 	chainProviders := make(map[domain.ChainID][]string)
 	scanIntervals := make(map[domain.ChainID]time.Duration)
 	routers := make(map[domain.ChainID]rpc.Router)
@@ -363,7 +362,6 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 		pipeline := indexer.NewPipeline(idxCfg)
 		indexers[chainID] = pipeline
-		chainIDs = append(chainIDs, chainID)
 	}
 
 	// 6. Initialize Health Monitor
@@ -435,22 +433,31 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 // Start starts the watcher and all its components.
 func (w *Watcher) Start(ctx context.Context) error {
 	// Start Health Server
-	w.wg.Go(func() {
+	// Start Health Server
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
 		if err := w.healthServer.Start(); err != nil {
 			w.log.Error("Health server failed", "error", err)
 		}
-	})
+	}()
 
 	// Start Health Monitor Background Tasks
-	w.wg.Go(func() {
+	// Start Health Monitor Background Tasks
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
 		w.healthMon.Start(ctx)
-	})
+	}()
 
 	// Start DB Metrics Collector
+	// Start DB Metrics Collector
 	if w.db != nil {
-		w.wg.Go(func() {
+		w.wg.Add(1)
+		go func() {
+			defer w.wg.Done()
 			w.db.StartMetricsCollector(ctx)
-		})
+		}()
 	}
 
 	// Start Indexers and Backfillers
@@ -500,9 +507,12 @@ func (w *Watcher) Start(ctx context.Context) error {
 	}
 
 	// Start RPC Metrics Updater
-	w.wg.Go(func() {
+	// Start RPC Metrics Updater
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
 		w.runMetricsUpdater(ctx)
-	})
+	}()
 
 	return nil
 }
@@ -513,7 +523,7 @@ func (w *Watcher) Stop(ctx context.Context) error {
 
 	// 1. Stop components with explicit Stop methods
 	for _, idx := range w.indexers {
-		idx.Stop()
+		_ = idx.Stop()
 	}
 
 	if w.healthServer != nil {

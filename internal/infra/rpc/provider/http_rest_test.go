@@ -44,7 +44,7 @@ func TestHTTPProvider_ExecuteREST(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -95,7 +95,7 @@ func TestHTTPProvider_ExecuteREST_WithParams(t *testing.T) {
 		}
 
 		response := map[string]any{"status": "ok"}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

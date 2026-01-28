@@ -9,7 +9,7 @@ func TestMemoryFilter(t *testing.T) {
 	f := NewMemoryFilter()
 
 	// Test Add and Contains
-	f.Add("0x123")
+	_ = f.Add("0x123")
 	if !f.Contains("0x123") {
 		t.Error("Expected filter to contain 0x123")
 	}
@@ -21,7 +21,7 @@ func TestMemoryFilter(t *testing.T) {
 	}
 
 	// Test AddBatch
-	f.AddBatch([]string{"0xabc", "0xdef"})
+	_ = f.AddBatch([]string{"0xabc", "0xdef"})
 	if !f.Contains("0xabc") || !f.Contains("0xdef") {
 		t.Error("Expected filter to contain batch added addresses")
 	}
@@ -32,7 +32,7 @@ func TestMemoryFilter(t *testing.T) {
 	}
 
 	// Test Remove
-	f.Remove("0x123")
+	_ = f.Remove("0x123")
 	if f.Contains("0x123") {
 		t.Error("Expected filter not to contain 0x123 after removal")
 	}

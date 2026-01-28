@@ -31,7 +31,7 @@ func (e *LogEmitter) Emit(ctx context.Context, event *domain.Event) error {
 }
 func (e *LogEmitter) EmitBatch(ctx context.Context, events []*domain.Event) error {
 	for _, ev := range events {
-		e.Emit(ctx, ev)
+		_ = e.Emit(ctx, ev)
 	}
 	return nil
 }

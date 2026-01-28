@@ -35,17 +35,21 @@ func runStatus(cmd *cobra.Command, args []string) {
 		slog.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	rows, err := db.QueryContext(ctx, "SELECT chain_id, block_number, updated_at FROM cursors")
 	if err != nil {
 		slog.Error("Failed to query cursors", "error", err)
 		os.Exit(1)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', tabwriter.Debug)
-	fmt.Fprintln(w, "CHAIN\tBLOCK\tUPDATED")
+	_, _ = fmt.Fprintln(w, "CHAIN\tBLOCK\tUPDATED")
 
 	for rows.Next() {
 		var chainID string
@@ -54,7 +58,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		if err := rows.Scan(&chainID, &block, &updatedAt); err != nil {
 			continue
 		}
-		fmt.Fprintf(w, "%s\t%d\t%d\n", chainID, block, updatedAt)
+		_, _ = fmt.Fprintf(w, "%s\t%d\t%d\n", chainID, block, updatedAt)
 	}
-	w.Flush()
+	_ = w.Flush()
 }

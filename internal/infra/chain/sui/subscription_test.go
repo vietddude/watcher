@@ -23,7 +23,7 @@ func TestSubscribeCheckpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := v2.NewSubscriptionServiceClient(conn)
 

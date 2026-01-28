@@ -176,7 +176,7 @@ func TestManagerAdvance(t *testing.T) {
 	}
 
 	// Set to scanning state (init cannot advance)
-	repo.UpdateState(ctx, "ethereum", domain.CursorStateScanning)
+	_ = repo.UpdateState(ctx, "ethereum", domain.CursorStateScanning)
 
 	// Advance to 1001 should succeed
 	err = manager.Advance(ctx, "ethereum", 1001, "0xabc")
@@ -197,7 +197,7 @@ func TestManagerAdvance_GapDetection(t *testing.T) {
 	ctx := context.Background()
 
 	_, _ = manager.Initialize(ctx, "ethereum", 1000)
-	repo.UpdateState(ctx, "ethereum", domain.CursorStateScanning)
+	_ = repo.UpdateState(ctx, "ethereum", domain.CursorStateScanning)
 
 	// Try to skip to block 1005 (gap)
 	err := manager.Advance(ctx, "ethereum", 1005, "0xdef")
@@ -240,7 +240,7 @@ func TestManagerRollback(t *testing.T) {
 
 	// Advance a few blocks
 	for i := uint64(1001); i <= 1005; i++ {
-		repo.UpdateBlock(ctx, "ethereum", i, "0x...")
+		_ = repo.UpdateBlock(ctx, "ethereum", i, "0x...")
 	}
 	repo.cursors["ethereum"].BlockNumber = 1005
 
