@@ -38,6 +38,7 @@ type ChainConfig struct {
 	RescanRanges       bool                      `yaml:"rescan_ranges"       mapstructure:"rescan_ranges"`    // Enable rescan worker
 	Providers          []ProviderConfig          `yaml:"providers"           mapstructure:"providers"`
 	AdaptiveThrottling *AdaptiveThrottlingConfig `yaml:"adaptive_throttling" mapstructure:"adaptive_throttling"`
+	GapJumpThreshold   uint64                    `yaml:"gap_jump_threshold"  mapstructure:"gap_jump_threshold"`
 }
 
 // ProviderConfig holds settings for an RPC provider.

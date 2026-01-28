@@ -339,22 +339,24 @@ func NewWatcher(cfg Config) (*Watcher, error) {
 
 		// 5. Create Indexer Pipeline
 		idxCfg := indexer.Config{
-			ChainID:         domain.ChainID(chainID),
-			ChainType:       chainCfg.Type,
-			ChainAdapter:    adapter,
-			Cursor:          cursorMgr,
-			Reorg:           reorgDetector,
-			ReorgHandler:    reorgHandler,
-			Recovery:        recoveryHandler,
-			Emitter:         finalityEmitter,
-			Filter:          simpleFilter,
-			DB:              db, // For atomic UnitOfWork operations
-			BlockRepo:       blockRepo,
-			TransactionRepo: txRepo,
-			ScanInterval:    chainCfg.ScanInterval,
-			BatchSize:       10,
-			Controller:      controller,
-			HeadCache:       headCache,
+			ChainID:          domain.ChainID(chainID),
+			ChainType:        chainCfg.Type,
+			ChainAdapter:     adapter,
+			Cursor:           cursorMgr,
+			Reorg:            reorgDetector,
+			ReorgHandler:     reorgHandler,
+			Recovery:         recoveryHandler,
+			Emitter:          finalityEmitter,
+			Filter:           simpleFilter,
+			DB:               db, // For atomic UnitOfWork operations
+			BlockRepo:        blockRepo,
+			TransactionRepo:  txRepo,
+			ScanInterval:     chainCfg.ScanInterval,
+			BatchSize:        10,
+			Controller:       controller,
+			HeadCache:        headCache,
+			MissingRepo:      missingRepo,
+			GapJumpThreshold: chainCfg.GapJumpThreshold,
 		}
 
 		pipeline := indexer.NewPipeline(idxCfg)

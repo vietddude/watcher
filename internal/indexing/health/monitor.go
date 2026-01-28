@@ -2,12 +2,10 @@ package health
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/vietddude/watcher/internal/core/cursor"
 	"github.com/vietddude/watcher/internal/core/domain"
 	"github.com/vietddude/watcher/internal/indexing/metrics"
@@ -153,48 +151,9 @@ func (m *Monitor) CheckHealth(ctx context.Context) map[domain.ChainID]ChainHealt
 						gapTo := latestHeight - 1
 
 						if gapTo >= gapFrom {
-							slog.Warn("Triggering auto-backfill and cursor jump",
-								"chain", chainID,
-								"lag", lag,
-								"growing", isGrowing,
-								"count", m.highLagCount[chainID],
-								"gapFrom", gapFrom,
-								"gapTo", gapTo,
-							)
-
-							// 1. Create MissingBlock task
-							missing := &domain.MissingBlock{
-								ID:        uuid.New().String(),
-								ChainID:   chainID,
-								FromBlock: gapFrom,
-								ToBlock:   gapTo,
-								Status:    domain.MissingBlockStatusPending,
-								Priority:  10,
-								CreatedAt: uint64(time.Now().Unix()),
-							}
-
-							if err := m.missingRepo.Add(ctx, missing); err != nil {
-								slog.Error(
-									"Failed to queue backfill task",
-									"chain",
-									chainID,
-									"error",
-									err,
-								)
-							} else {
-								slog.Info("Queued backfill task", "chain", chainID, "range", fmt.Sprintf("%d-%d", gapFrom, gapTo))
-
-								// 2. Jump Cursor to Latest Height
-								jumpTarget := latestHeight - 1
-								if err := m.cursorMgr.Jump(ctx, chainID, jumpTarget); err != nil {
-									slog.Error("Failed to jump cursor", "chain", chainID, "error", err)
-								} else {
-									slog.Info("Jumped cursor to tip", "chain", chainID, "target", jumpTarget)
-									health.BlockLag = 0
-									m.highLagCount[chainID] = 0
-									m.lastLag[chainID] = 0
-								}
-							}
+							// Pipeline will handle the jump automatically
+							// We just clear highLagCount here to avoid repeated detections
+							m.highLagCount[chainID] = 0
 						}
 					}
 				}

@@ -24,7 +24,7 @@ WHERE chain_id = $2;
 
 -- name: UpsertCursorBlock :exec
 INSERT INTO cursors (chain_id, block_number, block_hash, state, updated_at)
-VALUES ($1, $2, $3, 'running', $4)
+VALUES ($1, $2, $3, 'scanning', $4)
 ON CONFLICT (chain_id) DO UPDATE SET
     block_number = EXCLUDED.block_number,
     block_hash = EXCLUDED.block_hash,

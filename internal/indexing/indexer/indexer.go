@@ -52,8 +52,10 @@ type Config struct {
 	BatchSize    int
 
 	// Adaptive throttling (optional)
-	Controller *throttle.AdaptiveController
-	HeadCache  *throttle.HeadCache
+	Controller       *throttle.AdaptiveController
+	HeadCache        *throttle.HeadCache
+	MissingRepo      storage.MissingBlockRepository
+	GapJumpThreshold uint64
 }
 
 // Status represents the current state of the indexer

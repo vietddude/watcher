@@ -233,4 +233,23 @@ var (
 		},
 		[]string{"chain"},
 	)
+
+	// GapJumpsTotal tracks total number of gap jumps
+	GapJumpsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "watcher_gap_jumps_total",
+			Help: "Total number of gap jumps triggered",
+		},
+		[]string{"chain"},
+	)
+
+	// GapJumpSize tracks the size of gaps jumped
+	GapJumpSize = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "watcher_gap_jump_size_blocks",
+			Help:    "Size of gaps jumped in blocks",
+			Buckets: []float64{100, 1000, 5000, 10000, 50000, 100000},
+		},
+		[]string{"chain"},
+	)
 )

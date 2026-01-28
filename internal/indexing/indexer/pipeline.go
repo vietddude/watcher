@@ -212,6 +212,30 @@ func (p *Pipeline) processNextBlock(ctx context.Context) (bool, error) {
 
 	targetBlockNum := cursor.BlockNumber + 1
 
+	// [NEW] Check for large lag and jump to head if necessary
+	if p.cfg.GapJumpThreshold > 0 && p.cfg.MissingRepo != nil {
+		latestBlock, err := p.getLatestBlock(ctx)
+		if err == nil {
+			lag := int64(latestBlock) - int64(cursor.BlockNumber)
+			if lag > int64(p.cfg.GapJumpThreshold) {
+				slog.Warn(
+					"Large lag detected, jumping to head",
+					"chain", p.cfg.ChainID,
+					"lag", lag,
+					"threshold", p.cfg.GapJumpThreshold,
+					"current", cursor.BlockNumber,
+					"target", latestBlock,
+				)
+				if err := p.jumpToHead(ctx, cursor.BlockNumber+1, latestBlock); err != nil {
+					slog.Error("Failed to jump to head", "error", err)
+				} else {
+					// Return immediately to start processing from new head
+					return true, nil
+				}
+			}
+		}
+	}
+
 	// 2. Fetch block data (Adapter provides domain.Block)
 	block, err := p.cfg.ChainAdapter.GetBlock(ctx, targetBlockNum)
 	if err != nil {

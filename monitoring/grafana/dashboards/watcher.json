@@ -242,6 +242,18 @@
           "instant": true,
           "legendFormat": "__auto",
           "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(watcher_gap_jumps_total[1h])) by (chain)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "refId": "F"
         }
       ],
       "title": "Chain Status Overview",
@@ -262,7 +274,8 @@
               "Value #A": 2,
               "Value #B": 3,
               "Value #C": 4,
-              "Value #D": 5
+              "Value #D": 5,
+              "Value #F": 6
             },
             "renameByName": {
               "chain": "Chain",
@@ -270,7 +283,8 @@
               "Value #A": "Chain Block",
               "Value #B": "Indexer Block",
               "Value #C": "Lag",
-              "Value #D": "Backfill Queue"
+              "Value #D": "Backfill Queue",
+              "Value #F": "Gap Jumps (1h)"
             }
           }
         }
