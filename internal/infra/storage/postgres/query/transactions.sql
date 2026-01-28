@@ -58,7 +58,7 @@ SELECT
     unnest($6::varchar[]) AS from_address,
     NULLIF(unnest($7::varchar[]), '') AS to_address,
     NULLIF(unnest($8::varchar[]), '') AS value,
-    NULLIF(unnest($9::varchar[]), 'native') AS tx_type,
+    unnest($9::varchar[]) AS tx_type,
     NULLIF(unnest($10::varchar[]), '') AS token_address,
     NULLIF(unnest($11::varchar[]), '') AS token_amount,
     unnest($12::bigint[]) AS gas_used,
