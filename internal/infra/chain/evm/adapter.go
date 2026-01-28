@@ -295,7 +295,6 @@ func (a *EVMAdapter) ensureAddressIndex(addresses []string) {
 	for _, addr := range addresses {
 		lower := strings.ToLower(addr)
 		a.addressSet[lower] = struct{}{}
-		a.log.Info("Monitoring address", "address", lower)
 	}
 
 	a.lastAddressHash = h
@@ -469,14 +468,6 @@ func (a *EVMAdapter) processReceipt(tx *domain.Transaction, receipt map[string]a
 			}
 
 			relevantTransfers = append(relevantTransfers, transferInfo)
-
-			a.log.Info("Detected ERC20 transfer",
-				"tx", tx.Hash,
-				"contract", tokenContract,
-				"from", tokenFrom,
-				"to", tokenTo,
-				"value", tokenValue,
-			)
 		}
 	}
 
