@@ -59,10 +59,6 @@ jobs:
         run: go test -v ./...
 
       - name: Run E2E Tests
-        # We'll run these once the e2e folder exists
-        run: |
-          if [ -d "tests/e2e" ]; then
-            go test -v ./tests/e2e/...
-          else
-            echo "E2E directory not found, skipping."
-          fi
+        env:
+          E2E_LIVE: true
+        run: go test -v ./tests/e2e/...

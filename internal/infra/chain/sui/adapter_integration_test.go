@@ -2,6 +2,7 @@ package sui
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -10,6 +11,10 @@ import (
 )
 
 func TestAdapterStreaming(t *testing.T) {
+	if os.Getenv("E2E_LIVE") == "" {
+		t.Skip("Skipping live adapter test. Set E2E_LIVE=true to run.")
+	}
+
 	// 1. Setup Real GRPC Provider
 	// Use the public testnet endpoint
 	url := "https://fullnode.testnet.sui.io:443"

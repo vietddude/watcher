@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -14,6 +15,10 @@ import (
 )
 
 func TestSubscribeCheckpoints(t *testing.T) {
+	if os.Getenv("E2E_LIVE") == "" {
+		t.Skip("Skipping live subscription test. Set E2E_LIVE=true to run.")
+	}
+
 	// Use the public mainnet endpoint which supports gRPC
 	target := "api-sui-mainnet-full.n.dwellir.com:443"
 
